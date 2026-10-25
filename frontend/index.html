@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CareerSync — Resume-Based Career and Resource Recommendation System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+      <div class="mobile-brand">
+        <img src="Logo.png" alt="CareerSync Logo" class="brand-logo">
+        <span class="brand-name">CareerSync</span>
+      </div>
+      <button id="mobileMenuBtn" class="menu-toggle-btn" aria-label="Toggle navigation menu">
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+      </button>
+    </header>
+
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-wrapper">
+          <img src="Logo.png" alt="CareerSync Logo" class="brand-logo">
+          <div class="brand-text">
+            <h1 class="brand-name">CareerSync</h1>
+            <p class="brand-tagline">Career & Resource Recommendation</p>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-group-title">Navigation</div>
+        <ul class="nav-list">
+          <li class="nav-item">
+            <a href="#overview" class="nav-link active" data-section="overview">
+              <span class="nav-icon">📊</span>
+              <span class="nav-label">Dashboard Overview</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#resume-analysis" class="nav-link" data-section="resume-analysis">
+              <span class="nav-icon">📄</span>
+              <span class="nav-label">Resume Analysis</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#job-matching" class="nav-link" data-section="job-matching">
+              <span class="nav-icon">🎯</span>
+              <span class="nav-label">Job Matching</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#skill-gap" class="nav-link" data-section="skill-gap">
+              <span class="nav-icon">⚡</span>
+              <span class="nav-label">Skill Gap Analysis</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#career-recommendations" class="nav-link" data-section="career-recommendations">
+              <span class="nav-icon">🧭</span>
+              <span class="nav-label">Career Recommendations</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#learning-resources" class="nav-link" data-section="learning-resources">
+              <span class="nav-icon">📚</span>
+              <span class="nav-label">Resources</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#resume-improvement" class="nav-link" data-section="resume-improvement">
+              <span class="nav-icon">✍️</span>
+              <span class="nav-label">Resume Improvement</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-divider"></div>
+        <ul class="nav-list nav-list-bottom">
+          <li class="nav-item">
+            <a href="#settings" class="nav-link" id="settingsNavLink" data-nav="settings">
+              <span class="nav-icon">⚙️</span>
+              <span class="nav-label">Settings</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Bar -->
+      <header class="top-bar">
+        <div class="top-bar-title">
+          <h2 id="topBarTitle">Resume-Based Career and Resource Recommendation System</h2>
+          <p class="subtitle" id="topBarSubtitle">Analyze resumes against target roles to identify skill gaps, career paths, and tailored learning resources.</p>
+        </div>
+      </header>
+
+      <div class="content-body" id="dashboardView">
+        <!-- 1. Overview Section -->
+        <section id="overview" class="dashboard-section">
+          <div class="section-header">
+            <div>
+              <h3 class="section-title">Dashboard Overview</h3>
+              <p class="section-desc">Current session summary and analysis readiness status.</p>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Resume Status</span>
+                <span class="stat-icon">📄</span>
+              </div>
+              <div class="stat-value" id="overviewResumeStatus">Not Uploaded</div>
+              <p class="stat-hint">Accepts PDF or DOCX file</p>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Target Role</span>
+                <span class="stat-icon">💼</span>
+              </div>
+              <div class="stat-value" id="overviewRoleStatus">None Specified</div>
+              <p class="stat-hint">Provide job description below</p>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Compatibility Score</span>
+                <span class="stat-icon">📈</span>
+              </div>
+              <div class="stat-value stat-muted" id="overviewScoreStatus">—</div>
+              <p class="stat-hint" id="overviewScoreHint">Awaiting analysis</p>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Identified Gaps</span>
+                <span class="stat-icon">🔍</span>
+              </div>
+              <div class="stat-value stat-muted" id="overviewGapStatus">—</div>
+              <p class="stat-hint" id="overviewGapHint">Pending resume evaluation</p>
+            </div>
+          </div>
+
+          <div class="info-banner">
+            <div class="info-banner-icon">ℹ️</div>
+            <div class="info-banner-body">
+              <strong>Objective Analysis Standard</strong>
+              <p>CareerSync provides objective compatibility scores based on verified qualifications, skills, and project relevance. It does not generate fabricated ATS numbers or make unsubstantiated career promises.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. Resume Analysis Section (Primary Core Feature) -->
+        <section id="resume-analysis" class="dashboard-section prominent-section">
+          <div class="section-header">
+            <div>
+              <div class="section-tag">Core Functionality</div>
+              <h3 class="section-title">Resume Analysis & Job Specification</h3>
+              <p class="section-desc">Upload your resume and enter the target job description to initiate comparative analysis.</p>
+            </div>
+          </div>
+
+          <div class="analysis-grid">
+            <!-- Left: Resume Upload Card -->
+            <div class="card">
+              <div class="card-header">
+                <h4 class="card-title">1. Upload Resume</h4>
+                <span class="card-badge">Required</span>
+              </div>
+              <div class="card-body">
+                <div id="dropZone" class="upload-dropzone" tabindex="0" role="button" aria-label="Resume upload drop area">
+                  <input type="file" id="resumeFileInput" class="file-input-hidden" accept=".pdf,.docx">
+                  <div class="upload-icon-wrapper">
+                    <span class="upload-icon">📁</span>
+                  </div>
+                  <p class="upload-prompt-primary"><strong>Click to upload</strong> or drag and drop your file here</p>
+                  <p class="upload-prompt-secondary">Supported formats: <strong>PDF</strong> or <strong>DOCX</strong> (Max file size: 5MB)</p>
+                </div>
+
+                <!-- Selected File Display Container -->
+                <div id="selectedFileInfo" class="selected-file-card hidden">
+                  <div class="file-details">
+                    <div class="file-icon-box" id="fileFormatIcon">📄</div>
+                    <div class="file-meta">
+                      <span id="fileName" class="file-name">filename.pdf</span>
+                      <span id="fileSize" class="file-size">0 KB</span>
+                    </div>
+                  </div>
+                  <button type="button" id="removeFileBtn" class="btn-text-danger" title="Remove selected file">
+                    Remove
+                  </button>
+                </div>
+
+                <div id="fileUploadError" class="alert-box alert-error hidden">
+                  <span class="alert-icon">⚠️</span>
+                  <span id="fileUploadErrorMessage" class="alert-text"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Job Description Card -->
+            <div class="card">
+              <div class="card-header">
+                <h4 class="card-title">2. Target Job Description</h4>
+                <span class="card-badge">Required</span>
+              </div>
+              <div class="card-body">
+                <div class="form-group">
+                  <label for="targetJobTitle" class="form-label">Target Role / Position Title</label>
+                  <input 
+                    type="text" 
+                    id="targetJobTitle" 
+                    class="form-control" 
+                    placeholder="e.g. Frontend Developer, Data Analyst, Cloud / DevOps Engineer..."
+                  >
+                </div>
+
+                <div class="form-group">
+                  <label for="jobDescriptionInput" class="form-label">Job Description & Requirements</label>
+                  <textarea 
+                    id="jobDescriptionInput" 
+                    class="form-control form-textarea" 
+                    rows="7" 
+                    placeholder="Paste the job description, required technical skills, qualifications, and role responsibilities here..."
+                  ></textarea>
+                  <div class="textarea-hint">
+                    <span id="jobDescCharCount">0 characters</span>
+                    <span>Provide complete requirements for accurate matching</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action and Notice Bar -->
+          <div class="action-bar-card">
+            <div class="action-notice">
+              <span class="notice-title">Scoring Transparency Notice</span>
+              <p class="notice-desc">Scores represent direct qualification and skill alignment computed by CareerSync's documented methodology. CareerSync does not claim to mimic proprietary closed-source ATS filters.</p>
+            </div>
+            <div class="action-controls">
+              <button type="button" id="clearInputsBtn" class="btn btn-secondary">Clear All</button>
+              <button type="button" id="analyzeBtn" class="btn btn-primary">
+                <span>Analyze Resume & Match Job</span>
+                <span class="btn-arrow">→</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Status Message Area -->
+          <div id="analysisStatusMessage" class="status-banner hidden">
+            <div class="status-banner-icon" id="statusMessageIcon">ℹ️</div>
+            <div class="status-banner-content" id="statusMessageText"></div>
+          </div>
+
+          <!-- Extracted Resume Profile Results Card (Populated upon analysis) -->
+          <div id="extractedProfileCard" class="card extracted-profile-card hidden">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">👤</span>
+                <h4 class="card-title">Extracted Resume Profile</h4>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="card-badge" id="profileExtractionStatus">Verified Extraction</span>
+                <button type="button" id="deleteResumeBtn" class="btn btn-secondary btn-sm" title="Permanently delete this resume and its analysis data from the server">
+                  🗑️ Delete Resume
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <!-- Candidate Meta Grid -->
+              <div class="profile-meta-grid" id="candidateMetaGrid">
+                <div class="meta-item">
+                  <span class="meta-label">Candidate Name</span>
+                  <span class="meta-value" id="profileCandidateName">Not detected</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Email Address</span>
+                  <span class="meta-value" id="profileCandidateEmail">Not detected</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Phone Number</span>
+                  <span class="meta-value" id="profileCandidatePhone">Not detected</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Extracted Skills</span>
+                  <span class="meta-value" id="profileSkillCount">0 catalog skills</span>
+                </div>
+              </div>
+
+              <!-- Extracted Skills Container -->
+              <div class="profile-section">
+                <h5 class="profile-section-title">Verified Catalog Skills</h5>
+                <div class="skills-chips-wrapper" id="extractedSkillsList">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+
+              <!-- Unmatched Skills Container (if any) -->
+              <div class="profile-section hidden" id="unmatchedSkillsSection">
+                <h5 class="profile-section-title text-secondary">Additional Skills Identified (Not in 42-Skill Catalog)</h5>
+                <div class="skills-chips-wrapper" id="unmatchedSkillsList">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+
+              <!-- Extracted Education -->
+              <div class="profile-section">
+                <h5 class="profile-section-title">Education & Academic Background</h5>
+                <div class="entity-list-container" id="extractedEducationList">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+
+              <!-- Extracted Projects -->
+              <div class="profile-section">
+                <h5 class="profile-section-title">Extracted Projects & Technologies</h5>
+                <div class="entity-list-container" id="extractedProjectsList">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+
+              <!-- Extracted Experience -->
+              <div class="profile-section">
+                <h5 class="profile-section-title">Work & Practical Experience</h5>
+                <div class="entity-list-container" id="extractedExperienceList">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Job Matching Section -->
+        <section id="job-matching" class="dashboard-section">
+          <div class="section-header">
+            <div>
+              <h3 class="section-title">Job Matching & Compatibility</h3>
+              <p class="section-desc">Detailed alignment between your resume and active catalog job roles.</p>
+            </div>
+          </div>
+
+          <!-- Empty State (when no resume analyzed) -->
+          <div class="preview-empty-card" id="jobMatchingEmptyCard">
+            <div class="empty-state-icon">🎯</div>
+            <h4 class="empty-state-title">No Matching Data Available</h4>
+            <p class="empty-state-desc">Upload your resume above to generate the deterministic compatibility breakdown across all active catalog roles. Evaluated requirements, required-skills coverage, matched skills, and score breakdown will appear here.</p>
+            <div class="methodology-box">
+              <h5 class="methodology-title">Documented Scoring Methodology</h5>
+              <div class="methodology-grid">
+                <div class="methodology-item">
+                  <span class="methodology-name">Core Technical Skills</span>
+                  <span class="methodology-weight">40% Weight</span>
+                </div>
+                <div class="methodology-item">
+                  <span class="methodology-name">Education & Qualifications</span>
+                  <span class="methodology-weight">20% Weight</span>
+                </div>
+                <div class="methodology-item">
+                  <span class="methodology-name">Project & Practical Experience</span>
+                  <span class="methodology-weight">25% Weight</span>
+                </div>
+                <div class="methodology-item">
+                  <span class="methodology-name">Domain & Relevant Keywords</span>
+                  <span class="methodology-weight">15% Weight</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading State Card -->
+          <div id="jobMatchingLoadingCard" class="card hidden">
+            <div class="card-body" style="padding: 32px; text-align: center; align-items: center;">
+              <span class="spinner" style="font-size: 2rem; margin-bottom: 12px;">⏳</span>
+              <h4 class="card-title" style="margin-bottom: 6px;">Computing Job Role Compatibility...</h4>
+              <p class="stat-hint">Evaluating verified skills against active catalog roles</p>
+            </div>
+          </div>
+
+          <!-- Error State Box -->
+          <div id="jobMatchingErrorCard" class="alert-box alert-error hidden">
+            <span class="alert-icon">⚠️</span>
+            <div style="flex: 1;">
+              <span id="jobMatchingErrorMessage" class="alert-text">Failed to fetch job matching data.</span>
+              <div style="margin-top: 8px;">
+                <button type="button" id="jobMatchingRetryBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.78rem;">Retry Matching</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Results Container Card -->
+          <div id="jobMatchingResultsCard" class="card hidden">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">🎯</span>
+                <h4 class="card-title" id="jobMatchingHeaderTitle">Catalog Role Compatibility</h4>
+              </div>
+              <span class="card-badge" id="jobMatchingRankBadge">Top Ranked</span>
+            </div>
+            <div class="card-body">
+              <!-- Role Selector Tabs -->
+              <div class="profile-section">
+                <h5 class="profile-section-title">Select Target Role</h5>
+                <div class="skills-chips-wrapper" id="jobRoleSelectorList">
+                  <!-- Populated dynamically with role buttons -->
+                </div>
+              </div>
+
+              <!-- Selected Role Details Container -->
+              <div id="selectedRoleMatchDetail">
+                <!-- Role Meta Grid -->
+                <div class="profile-meta-grid" id="jobRoleMetaGrid">
+                  <div class="meta-item">
+                    <span class="meta-label">Selected Role</span>
+                    <span class="meta-value" id="matchRoleTitle">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Domain / Level</span>
+                    <span class="meta-value" id="matchRoleDomain">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Compatibility Score</span>
+                    <span class="meta-value" id="matchScoreValue" style="color: var(--color-mint);">0.00%</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Required Skills Match</span>
+                    <span class="meta-value" id="matchRequiredCoverage">0.00%</span>
+                  </div>
+                </div>
+
+                <!-- Dynamic Explanation -->
+                <div class="profile-section">
+                  <h5 class="profile-section-title">Evaluation Summary</h5>
+                  <div class="entity-item-card">
+                    <p class="entity-item-desc" id="matchExplanationText">—</p>
+                  </div>
+                </div>
+
+                <!-- Matched Skills -->
+                <div class="profile-section">
+                  <h5 class="profile-section-title">
+                    <span>Verified Matched Skills</span>
+                    <span class="entity-item-badge" id="matchedSkillsCountBadge">(0)</span>
+                  </h5>
+                  <div class="skills-chips-wrapper" id="matchedSkillsChipsList">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+                <!-- Missing Required Skills -->
+                <div class="profile-section">
+                  <h5 class="profile-section-title">
+                    <span>Missing Required Skills (Critical)</span>
+                    <span class="entity-item-badge" id="missingRequiredCountBadge">(0)</span>
+                  </h5>
+                  <div class="skills-chips-wrapper" id="missingRequiredChipsList">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+                <!-- Missing Preferred Skills -->
+                <div class="profile-section">
+                  <h5 class="profile-section-title">
+                    <span>Missing Preferred Skills (Secondary)</span>
+                    <span class="entity-item-badge" id="missingPreferredCountBadge">(0)</span>
+                  </h5>
+                  <div class="skills-chips-wrapper" id="missingPreferredChipsList">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+                <!-- Scoring Breakdown Box -->
+                <div class="profile-section" style="margin-bottom: 0;">
+                  <h5 class="profile-section-title">Scoring Formula & Weights</h5>
+                  <div class="methodology-box" style="max-width: 100%;">
+                    <div class="methodology-grid">
+                      <div class="methodology-item">
+                        <span class="methodology-name">Formula</span>
+                        <span class="methodology-weight" id="matchFormulaText">(matched_weight / total_role_weight) * 100</span>
+                      </div>
+                      <div class="methodology-item">
+                        <span class="methodology-name">Matched Weight</span>
+                        <span class="methodology-weight" id="matchMatchedWeight">0.00 pts</span>
+                      </div>
+                      <div class="methodology-item">
+                        <span class="methodology-name">Total Role Weight</span>
+                        <span class="methodology-weight" id="matchTotalWeight">0.00 pts</span>
+                      </div>
+                      <div class="methodology-item">
+                        <span class="methodology-name">Required Weight Ratio</span>
+                        <span class="methodology-weight" id="matchRequiredWeightRatio">0.00 / 0.00 pts</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. Skill Gap Analysis Section -->
+        <section id="skill-gap" class="dashboard-section">
+          <div class="section-header">
+            <div>
+              <h3 class="section-title">Skill Gap Analysis</h3>
+              <p class="section-desc">Identified competencies required by the target role that are not evident in your resume.</p>
+            </div>
+          </div>
+
+          <!-- Empty State (when no resume analyzed) -->
+          <div class="preview-empty-card" id="skillGapEmptyCard">
+            <div class="empty-state-icon">⚡</div>
+            <h4 class="empty-state-title">Skill Gaps Pending Analysis</h4>
+            <p class="empty-state-desc">Once an analysis is executed, identified skills will be categorized into high-priority missing skills and secondary qualifications. Clear distinctions will be made between definitely unstated skills and unverified context.</p>
+            <div class="preview-layout-sketch">
+              <div class="sketch-column">
+                <span class="sketch-header critical">High Priority Gaps (Target Role Essentials)</span>
+                <div class="sketch-placeholder">Awaiting resume data...</div>
+              </div>
+              <div class="sketch-column">
+                <span class="sketch-header moderate">Secondary & Preferred Qualifications</span>
+                <div class="sketch-placeholder">Awaiting resume data...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading State Card -->
+          <div id="skillGapLoadingCard" class="card hidden">
+            <div class="card-body" style="padding: 32px; text-align: center; align-items: center;">
+              <span class="spinner" style="font-size: 2rem; margin-bottom: 12px;">⏳</span>
+              <h4 class="card-title" style="margin-bottom: 6px;">Analyzing Target Role Skill Gaps...</h4>
+              <p class="stat-hint">Evaluating required and preferred competencies against candidate profile</p>
+            </div>
+          </div>
+
+          <!-- Error State Box -->
+          <div id="skillGapErrorCard" class="alert-box alert-error hidden">
+            <span class="alert-icon">⚠️</span>
+            <div style="flex: 1;">
+              <span id="skillGapErrorMessage" class="alert-text">Failed to fetch skill gap analysis data.</span>
+              <div style="margin-top: 8px;">
+                <button type="button" id="skillGapRetryBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.78rem;">Retry Gap Analysis</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Results Container Card -->
+          <div id="skillGapResultsCard" class="card hidden">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">⚡</span>
+                <h4 class="card-title" id="skillGapHeaderTitle">Target Role Skill Gap Breakdown</h4>
+              </div>
+              <span class="card-badge" id="skillGapRankBadge">Evaluated Role</span>
+            </div>
+            <div class="card-body">
+              <!-- Role Selector Tabs -->
+              <div class="profile-section">
+                <h5 class="profile-section-title">Select Target Role</h5>
+                <div class="skills-chips-wrapper" id="skillGapRoleSelectorList">
+                  <!-- Populated dynamically with role buttons -->
+                </div>
+              </div>
+
+              <!-- Selected Role Details Container -->
+              <div id="selectedRoleSkillGapDetail">
+                <!-- Role Meta Grid -->
+                <div class="profile-meta-grid" id="skillGapRoleMetaGrid">
+                  <div class="meta-item">
+                    <span class="meta-label">Selected Role</span>
+                    <span class="meta-value" id="gapRoleTitle">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Domain / Level</span>
+                    <span class="meta-value" id="gapRoleDomain">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Compatibility Score</span>
+                    <span class="meta-value" id="gapScoreValue" style="color: var(--color-mint);">0.00%</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Technical Skill Score</span>
+                    <span class="meta-value" id="gapTechScoreValue">0.00%</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Possessed Competencies</span>
+                    <span class="meta-value" id="gapPossessedCount">0 / 0 skills</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Missing Gaps (Total)</span>
+                    <span class="meta-value" id="gapTotalMissingCount">0 gaps</span>
+                  </div>
+                </div>
+
+                <!-- Dynamic Explanation -->
+                <div class="profile-section">
+                  <h5 class="profile-section-title">Analysis Methodology & Notes</h5>
+                  <div class="entity-item-card">
+                    <p class="entity-item-desc" id="gapExplanationText">—</p>
+                  </div>
+                </div>
+
+                <!-- Two-Column Gaps Grid (Reusing preview-layout-sketch) -->
+                <div class="profile-section">
+                  <div class="preview-layout-sketch" style="max-width: 100%; margin-top: 0; margin-bottom: 0;">
+                    <!-- Critical Missing Skills (Required) -->
+                    <div class="sketch-column" style="background: var(--bg-card, #fff); border-style: solid; border-color: rgba(239, 68, 68, 0.3);">
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span class="sketch-header critical" style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0;">Critical Missing Skills (Required)</span>
+                        <span class="entity-item-badge" id="gapCriticalCountBadge" style="background-color: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); font-weight: 700;">(0)</span>
+                      </div>
+                      <div class="skills-chips-wrapper" id="gapCriticalSkillsList" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                        <!-- Populated dynamically -->
+                      </div>
+                    </div>
+
+                    <!-- Secondary Missing Skills (Preferred) -->
+                    <div class="sketch-column" style="background: var(--bg-card, #fff); border-style: solid; border-color: rgba(245, 158, 11, 0.3);">
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span class="sketch-header moderate" style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0;">Secondary Missing Skills (Preferred)</span>
+                        <span class="entity-item-badge" id="gapSecondaryCountBadge" style="background-color: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); font-weight: 700;">(0)</span>
+                      </div>
+                      <div class="skills-chips-wrapper" id="gapSecondarySkillsList" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                        <!-- Populated dynamically -->
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Possessed Skills for this Role -->
+                <div class="profile-section" style="margin-bottom: 0;">
+                  <h5 class="profile-section-title">
+                    <span>Possessed Skills Aligned with this Role</span>
+                    <span class="entity-item-badge" id="gapPossessedCountBadge">(0)</span>
+                  </h5>
+                  <div class="skills-chips-wrapper" id="gapPossessedChipsList">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. Career Recommendations Section -->
+        <section id="career-recommendations" class="dashboard-section">
+          <div class="section-header">
+            <div>
+              <h3 class="section-title">Career Role Recommendations</h3>
+              <p class="section-desc">Alternative or complementary career paths aligned with your existing skill profile.</p>
+            </div>
+          </div>
+
+          <!-- Empty State (when no resume analyzed) -->
+          <div class="preview-empty-card" id="careerRecEmptyCard">
+            <div class="empty-state-icon">🧭</div>
+            <h4 class="empty-state-title">Recommendations Ready to Generate</h4>
+            <p class="empty-state-desc">Based on the skills extracted from your resume, CareerSync will recommend relevant entry-level and transitional roles, explaining exactly why each role aligns with your background without guaranteeing employment outcomes.</p>
+          </div>
+
+          <!-- Loading State Card -->
+          <div id="careerRecLoadingCard" class="card hidden">
+            <div class="card-body" style="padding: 32px; text-align: center; align-items: center;">
+              <span class="spinner" style="font-size: 2rem; margin-bottom: 12px;">⏳</span>
+              <h4 class="card-title" style="margin-bottom: 6px;">Generating Explainable Career Recommendations...</h4>
+              <p class="stat-hint">Evaluating compatibility, skill overlap, and upskilling pathways across catalog roles</p>
+            </div>
+          </div>
+
+          <!-- Error State Box -->
+          <div id="careerRecErrorCard" class="alert-box alert-error hidden">
+            <span class="alert-icon">⚠️</span>
+            <div style="flex: 1;">
+              <span id="careerRecErrorMessage" class="alert-text">Failed to fetch career recommendations.</span>
+              <div style="margin-top: 8px;">
+                <button type="button" id="careerRecRetryBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.78rem;">Retry Recommendations</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Results Container Card -->
+          <div id="careerRecResultsCard" class="card hidden">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">🧭</span>
+                <h4 class="card-title" id="careerRecHeaderTitle">Ranked Career Recommendations</h4>
+              </div>
+              <span class="card-badge" id="careerRecTopBadge">Rank #1 • Top Recommendation</span>
+            </div>
+            <div class="card-body">
+              <!-- Role Selector Tabs -->
+              <div class="profile-section">
+                <h5 class="profile-section-title">Select Career Path Recommendation</h5>
+                <div class="skills-chips-wrapper" id="careerRecRoleSelectorList">
+                  <!-- Populated dynamically with ranked role buttons -->
+                </div>
+              </div>
+
+              <!-- Selected Role Recommendation Details Container -->
+              <div id="selectedCareerRecDetail">
+                <!-- Role Meta Grid -->
+                <div class="profile-meta-grid" id="careerRecRoleMetaGrid">
+                  <div class="meta-item">
+                    <span class="meta-label">Recommended Role</span>
+                    <span class="meta-value" id="recRoleTitle">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Domain / Level</span>
+                    <span class="meta-value" id="recRoleDomain">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Compatibility Score</span>
+                    <span class="meta-value" id="recMatchScoreValue" style="color: var(--color-mint);">0.00%</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Required Skills Coverage</span>
+                    <span class="meta-value" id="recTechScoreValue">0.00%</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Fit Assessment</span>
+                    <span class="meta-value" id="recFitLevelBadge">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Recommendation Rank</span>
+                    <span class="meta-value" id="recRankValue">—</span>
+                  </div>
+                </div>
+
+                <!-- Dynamic Evidence-Based Rationale -->
+                <div class="profile-section">
+                  <h5 class="profile-section-title">Evidence-Based Recommendation Rationale</h5>
+                  <div class="entity-item-card">
+                    <p class="entity-item-desc" id="recRationaleText">—</p>
+                  </div>
+                </div>
+
+                <!-- Matched Verified Skills -->
+                <div class="profile-section">
+                  <h5 class="profile-section-title">
+                    <span>Verified Matching Skills</span>
+                    <span class="entity-item-badge" id="recMatchedSkillsCountBadge">(0)</span>
+                  </h5>
+                  <div class="skills-chips-wrapper" id="recMatchedChipsList">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+                <!-- Critical Missing Skills (Required) -->
+                <div class="profile-section">
+                  <h5 class="profile-section-title">
+                    <span>Critical Missing Skills (Required to Close Gap)</span>
+                    <span class="entity-item-badge" id="recCriticalMissingCountBadge">(0)</span>
+                  </h5>
+                  <div class="skills-chips-wrapper" id="recCriticalChipsList">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+                <!-- Secondary Missing Skills (Preferred) -->
+                <div class="profile-section" style="margin-bottom: 0;">
+                  <h5 class="profile-section-title">
+                    <span>Secondary Missing Skills (Preferred Qualifications)</span>
+                    <span class="entity-item-badge" id="recSecondaryMissingCountBadge">(0)</span>
+                  </h5>
+                  <div class="skills-chips-wrapper" id="recSecondaryChipsList">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 6. Resources Section -->
+        <section id="learning-resources" class="dashboard-section">
+          <div class="section-header">
+            <div>
+              <h3 class="section-title">Resources</h3>
+              <p class="section-desc">Recommended study topics, official documentation, tutorials, and reputable certifications.</p>
+            </div>
+          </div>
+
+          <!-- Empty State (when no resume analyzed) -->
+          <div class="preview-empty-card" id="resourceRecEmptyCard">
+            <div class="empty-state-icon">📚</div>
+            <h4 class="empty-state-title">Resource Catalog Awaiting Gap Analysis</h4>
+            <p class="empty-state-desc">Curated learning resources and relevant certification paths will be prioritized according to your specific missing skills. All external links and resources are verified; no fabricated courses or links are presented.</p>
+          </div>
+
+          <!-- Loading State Card -->
+          <div id="resourceRecLoadingCard" class="card hidden">
+            <div class="card-body" style="padding: 32px; text-align: center; align-items: center;">
+              <span class="spinner" style="font-size: 2rem; margin-bottom: 12px;">⏳</span>
+              <h4 class="card-title" style="margin-bottom: 6px;">Mapping Curated Learning Resources & Certifications...</h4>
+              <p class="stat-hint">Matching targeted gap skills to verified learning pathways and industry certifications</p>
+            </div>
+          </div>
+
+          <!-- Error State Box -->
+          <div id="resourceRecErrorCard" class="alert-box alert-error hidden">
+            <span class="alert-icon">⚠️</span>
+            <div style="flex: 1;">
+              <span id="resourceRecErrorMessage" class="alert-text">Failed to fetch resource recommendations.</span>
+              <div style="margin-top: 8px;">
+                <button type="button" id="resourceRecRetryBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.78rem;">Retry Resource Analysis</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Results Container Card -->
+          <div id="resourceRecResultsCard" class="card hidden">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">📚</span>
+                <h4 class="card-title" id="resourceRecHeaderTitle">Curated Learning Pathways & Certifications</h4>
+              </div>
+              <span class="card-badge" id="resourceRecHeaderBadge">Consolidated Catalog</span>
+            </div>
+            <div class="card-body">
+              <!-- Role Selector Tabs -->
+              <div class="profile-section">
+                <h5 class="profile-section-title">Select Target Career Role</h5>
+                <div class="skills-chips-wrapper" id="resourceRecRoleSelectorList">
+                  <!-- Populated dynamically with role selector buttons -->
+                </div>
+              </div>
+
+              <!-- Selected Role Recommendation Details Container -->
+              <div id="selectedResourceRecDetail">
+                <!-- Role Meta Grid -->
+                <div class="profile-meta-grid" id="resourceRecRoleMetaGrid">
+                  <div class="meta-item">
+                    <span class="meta-label">Target Role</span>
+                    <span class="meta-value" id="resRoleTitle">—</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Role Compatibility</span>
+                    <span class="meta-value" id="resMatchScoreValue" style="color: var(--color-mint);">0.00%</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Curated Learning Resources</span>
+                    <span class="meta-value" id="resTotalResourcesCount">0</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Targeted Certifications</span>
+                    <span class="meta-value" id="resTotalCertificationsCount">0</span>
+                  </div>
+                </div>
+
+                <!-- Client-Side Category Filter Pills -->
+                <div class="profile-section" style="margin-top: 16px; margin-bottom: 20px;">
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="resourceRecFilterTabs">
+                    <button type="button" id="resourceRecFilterAllBtn" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;">All Recommendations</button>
+                    <button type="button" id="resourceRecFilterResourcesBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;">Learning Resources Only</button>
+                    <button type="button" id="resourceRecFilterCertificationsBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;">Certifications Only</button>
+                  </div>
+                </div>
+
+                <!-- Learning Resources Subsection -->
+                <div class="profile-section" id="resourceRecLearningSection">
+                  <h5 class="profile-section-title">
+                    <span>Curated Study Topics & Documentation</span>
+                    <span class="entity-item-badge" id="resourceRecLearningCountBadge">(0)</span>
+                  </h5>
+                  <div id="resourceRecLearningList" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Populated dynamically with entity-item-card elements -->
+                  </div>
+                </div>
+
+                <!-- Certifications Subsection -->
+                <div class="profile-section" id="resourceRecCertSection" style="margin-bottom: 0;">
+                  <h5 class="profile-section-title">
+                    <span>Industry Recognized Certifications</span>
+                    <span class="entity-item-badge" id="resourceRecCertCountBadge">(0)</span>
+                  </h5>
+                  <div id="resourceRecCertList" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Populated dynamically with entity-item-card elements -->
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 7. Resume Improvement Section (Preview) -->
+        <section id="resume-improvement" class="dashboard-section">
+          <div class="section-header">
+            <div>
+              <h3 class="section-title">Resume Improvement Suggestions</h3>
+              <p class="section-desc">Actionable recommendations to improve clarity, structural coherence, and project impact.</p>
+            </div>
+          </div>
+
+          <div class="preview-empty-card">
+            <div class="empty-state-icon">✍️</div>
+            <h4 class="empty-state-title">Improvement Feedback Pending Analysis</h4>
+            <p class="empty-state-desc">Receive guidance on phrasing project impact, highlighting technical proficiencies, and organizing sections to better communicate your qualifications to reviewers. CareerSync does not fabricate achievements or qualifications.</p>
+          </div>
+        </section>
+      </div>
+
+      <!-- Settings View Body -->
+      <div class="content-body hidden" id="settingsView">
+        <div class="settings-intro-header">
+          <h3 class="section-title">Application Settings</h3>
+          <p class="section-desc">Manage your workspace visual preferences and review application details.</p>
+        </div>
+
+        <div class="settings-grid">
+          <!-- A. Appearance -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">🎨</span>
+                <h4 class="card-title">Appearance</h4>
+              </div>
+              <span class="card-badge">Theme</span>
+            </div>
+            <div class="card-body">
+              <p class="settings-card-desc">Choose between Light Mode and Dark Mode. Your theme selection is automatically saved and applies across all dashboard sections and controls.</p>
+              
+              <div class="theme-selector-grid">
+                <button type="button" class="theme-card-btn active" id="themeLightBtn" data-theme="light" aria-label="Select Light Mode">
+                  <div class="theme-card-top">
+                    <span class="theme-card-icon">☀️</span>
+                    <span class="theme-card-name">Light Mode</span>
+                    <span class="theme-card-check">●</span>
+                  </div>
+                  <p class="theme-card-info">High-contrast light interface with clean white surfaces, crisp slate borders, and blue accents.</p>
+                </button>
+
+                <button type="button" class="theme-card-btn" id="themeDarkBtn" data-theme="dark" aria-label="Select Dark Mode">
+                  <div class="theme-card-top">
+                    <span class="theme-card-icon">🌙</span>
+                    <span class="theme-card-name">Dark Mode</span>
+                    <span class="theme-card-check">●</span>
+                  </div>
+                  <p class="theme-card-info">Dark navy and slate palette designed to reduce glare and eye strain in low-light environments.</p>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- B. Profile -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">👤</span>
+                <h4 class="card-title">Profile</h4>
+              </div>
+              <span class="card-badge">Planned</span>
+            </div>
+            <div class="card-body">
+              <div class="placeholder-notice">
+                <span class="placeholder-icon">ℹ️</span>
+                <div class="placeholder-content">
+                  <strong>User Profile Management</strong>
+                  <p>Profile management, personal details, and saved resume analyses will become available when user accounts and authentication are implemented. CareerSync currently operates in direct session mode without user accounts.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- C. Resume Preferences -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">📄</span>
+                <h4 class="card-title">Resume Preferences</h4>
+              </div>
+              <span class="card-badge">Planned</span>
+            </div>
+            <div class="card-body">
+              <div class="placeholder-notice">
+                <span class="placeholder-icon">ℹ️</span>
+                <div class="placeholder-content">
+                  <strong>Career & Matching Preferences</strong>
+                  <p>Default target job titles, preferred industry sectors (e.g. Software Engineering, Data Analysis, Cloud), and parsing preference options will be configurable here in a future update.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- D. Notifications -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">🔔</span>
+                <h4 class="card-title">Notifications</h4>
+              </div>
+              <span class="card-badge">Planned</span>
+            </div>
+            <div class="card-body">
+              <div class="placeholder-notice">
+                <span class="placeholder-icon">ℹ️</span>
+                <div class="placeholder-content">
+                  <strong>Notification Preferences</strong>
+                  <p>Notification preferences for completed analyses, learning reminders, and application updates will be available in a future version. Background notifications are not currently active.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- E. About CareerSync -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">ℹ️</span>
+                <h4 class="card-title">About CareerSync</h4>
+              </div>
+              <span class="card-badge">Information</span>
+            </div>
+            <div class="card-body">
+              <div class="about-info-block">
+                <div class="about-item">
+                  <span class="about-label">Project Name</span>
+                  <span class="about-value">CareerSync</span>
+                </div>
+                <div class="about-item">
+                  <span class="about-label">Official Project Title</span>
+                  <span class="about-value">Resume-Based Career and Resource Recommendation System</span>
+                </div>
+                <div class="about-item">
+                  <span class="about-label">Target Audience</span>
+                  <span class="about-value">College Students and Fresh Graduates</span>
+                </div>
+                <div class="about-item">
+                  <span class="about-label">Core Purpose</span>
+                  <span class="about-value">Transparent resume analysis against target job descriptions, objective skill gap identification, and verified learning resource recommendations without fabricated scores or employment guarantees.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="main-footer">
+        <p><strong>CareerSync</strong> — Resume-Based Career and Resource Recommendation System</p>
+        <p class="footer-note">College Students & Fresh Graduates Career Guidance Platform. Built with HTML, CSS, JavaScript & Python FastAPI.</p>
+      </footer>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
