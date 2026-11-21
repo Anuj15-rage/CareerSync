@@ -29,6 +29,18 @@ from backend.schemas.analysis import (
     SanitizedResumePayload,
     SuggestionPriority,
 )
+from backend.schemas.recommendation import (
+    EnrichedLearningRoadmapResponse,
+    EnrichedRoadmapItem,
+    EnrichedRoadmapPhase,
+    GeminiRoadmapItem,
+    GeminiRoadmapOutput,
+    GeminiRoadmapPhase,
+    PersonalizedRoadmapResponse,
+    RoadmapItem,
+    RoadmapItemType,
+    RoadmapPhase,
+)
 from backend.services.gemini_service import (
     GeminiConfigurationError,
     GeminiNetworkError,
@@ -37,6 +49,8 @@ from backend.services.gemini_service import (
     GeminiServiceError,
     build_gemini_response_schema,
     build_improvement_prompt,
+    build_roadmap_prompt,
+    generate_learning_roadmap,
     generate_resume_improvement_suggestions,
     generate_resume_improvements_from_payload,
     get_gemini_client,
@@ -404,9 +418,474 @@ def run_all_tests():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromTestCase(TestGeminiService))
+    suite.addTests(loader.loadTestsFromTestCase(TestGeminiRoadmapService))
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     return result
+
+
+class TestGeminiRoadmapService(unittest.TestCase):
+    """Test suite for learning roadmap generation in GeminiService."""
+
+    def setUp(self):
+        self.sample_resources = [
+            {
+                "resource_id": 10,
+                "title": "Official Docker Tutorial",
+                "platform_name": "Docker Docs",
+                "url": "https://docs.docker.com/get-started/",
+                "targeted_skill_name": "Docker",
+                "difficulty_level": "BEGINNER",
+                "is_free": True,
+            },
+            {
+                "resource_id": 12,
+                "title": "FastAPI Async Web Development",
+                "platform_name": "FastAPI Docs",
+                "url": "https://fastapi.tiangolo.com/tutorial/",
+                "targeted_skill_name": "FastAPI",
+                "difficulty_level": "INTERMEDIATE",
+                "is_free": True,
+            },
+        ]
+        self.sample_certifications = [
+            {
+                "certification_id": 3,
+                "name": "AWS Certified Cloud Practitioner",
+                "code": "CLF-C02",
+                "provider_name": "Amazon Web Services",
+                "official_url": "https://aws.amazon.com/certification/certified-cloud-practitioner/",
+                "level": "ENTRY",
+                "targeted_skill_name": "AWS",
+            }
+        ]
+        self.valid_gemini_roadmap_payload = {
+            "target_role_title": "Backend Software Engineer",
+            "total_phases": 2,
+            "total_items": 3,
+            "summary": "Targeted phased curriculum bridging Docker, FastAPI, and AWS infrastructure gaps.",
+            "phases": [
+                {
+                    "phase_number": 1,
+                    "title": "Phase 1: Backend Architecture & Containers",
+                    "description": "Master asynchronous REST endpoints and containerized deployments.",
+                    "items": [
+                        {
+                            "item_type": "LEARNING_RESOURCE",
+                            "resource_id": 12,
+                            "targeted_skill_name": "FastAPI",
+                            "personalized_explanation": "Build on your existing Python background by mastering asynchronous API development with FastAPI.",
+                            "sequence_order": 1,
+                        },
+                        {
+                            "item_type": "LEARNING_RESOURCE",
+                            "resource_id": 10,
+                            "targeted_skill_name": "Docker",
+                            "personalized_explanation": "Containerize your FastAPI applications to bridge deployment and DevOps requirements for backend roles.",
+                            "sequence_order": 2,
+                        },
+                    ],
+                },
+                {
+                    "phase_number": 2,
+                    "title": "Phase 2: Cloud Infrastructure & Validation",
+                    "description": "Demonstrate foundational cloud proficiency with an accredited credential.",
+                    "items": [
+                        {
+                            "item_type": "CERTIFICATION",
+                            "certification_id": 3,
+                            "targeted_skill_name": "AWS",
+                            "personalized_explanation": "Validate your cloud architecture knowledge to demonstrate readiness for production cloud deployments.",
+                            "sequence_order": 1,
+                        }
+                    ],
+                },
+            ],
+        }
+
+    def test_successful_roadmap_generation(self):
+        """Verify successful roadmap generation and database enrichment from valid mocked Gemini response."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(self.valid_gemini_roadmap_payload)
+        mock_client.models.generate_content.return_value = mock_response
+
+        roadmap = generate_learning_roadmap(
+            resume_id=1,
+            target_role_title="Backend Software Engineer",
+            target_role_id=5,
+            verified_skills=["Python", "SQL", "Git"],
+            missing_skills=["Docker", "FastAPI", "AWS"],
+            learning_resources=self.sample_resources,
+            certifications=self.sample_certifications,
+            client=mock_client,
+        )
+
+        self.assertEqual(roadmap.resume_id, 1)
+        self.assertEqual(roadmap.target_role_id, 5)
+        self.assertEqual(roadmap.target_role_title, "Backend Software Engineer")
+        self.assertEqual(roadmap.total_phases, 2)
+        self.assertEqual(roadmap.total_items, 3)
+        self.assertEqual(len(roadmap.phases), 2)
+
+        # Verify phase 1 items are properly enriched with database URLs and titles
+        phase1_items = roadmap.phases[0].items
+        self.assertEqual(phase1_items[0].resource_id, 12)
+        self.assertEqual(phase1_items[0].title, "FastAPI Async Web Development")
+        self.assertEqual(phase1_items[0].url, "https://fastapi.tiangolo.com/tutorial/")
+        self.assertTrue(phase1_items[0].is_free)
+
+        # Verify phase 2 certification item is enriched
+        phase2_items = roadmap.phases[1].items
+        self.assertEqual(phase2_items[0].certification_id, 3)
+        self.assertEqual(phase2_items[0].title, "AWS Certified Cloud Practitioner")
+        self.assertEqual(phase2_items[0].platform_or_provider, "Amazon Web Services")
+        self.assertEqual(phase2_items[0].url, "https://aws.amazon.com/certification/certified-cloud-practitioner/")
+
+    def test_invalid_unsupplied_resource_id_rejected(self):
+        """Gemini returning a resource_id not present in supplied resources is rejected."""
+        mock_client = MagicMock()
+        bad_payload = json.loads(json.dumps(self.valid_gemini_roadmap_payload))
+        bad_payload["phases"][0]["items"][0]["resource_id"] = 999  # Not in [10, 12]
+
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(bad_payload)
+        mock_client.models.generate_content.return_value = mock_response
+
+        with self.assertRaises(GeminiResponseParsingError) as ctx:
+            generate_learning_roadmap(
+                resume_id=1,
+                target_role_title="Backend Software Engineer",
+                learning_resources=self.sample_resources,
+                certifications=self.sample_certifications,
+                client=mock_client,
+            )
+        self.assertIn("unapproved or non-existent resource_id: 999", str(ctx.exception))
+
+    def test_invalid_unsupplied_certification_id_rejected(self):
+        """Gemini returning a certification_id not present in supplied certifications is rejected."""
+        mock_client = MagicMock()
+        bad_payload = json.loads(json.dumps(self.valid_gemini_roadmap_payload))
+        bad_payload["phases"][1]["items"][0]["certification_id"] = 777  # Not in [3]
+
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(bad_payload)
+        mock_client.models.generate_content.return_value = mock_response
+
+        with self.assertRaises(GeminiResponseParsingError) as ctx:
+            generate_learning_roadmap(
+                resume_id=1,
+                target_role_title="Backend Software Engineer",
+                learning_resources=self.sample_resources,
+                certifications=self.sample_certifications,
+                client=mock_client,
+            )
+        self.assertIn("unapproved or non-existent certification_id: 777", str(ctx.exception))
+
+    def test_malformed_gemini_response_raises_parsing_error(self):
+        """Non-JSON or empty response from Gemini raises GeminiResponseParsingError."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = "NOT VALID JSON"
+        mock_client.models.generate_content.return_value = mock_response
+
+        with self.assertRaises(GeminiResponseParsingError) as ctx:
+            generate_learning_roadmap(
+                resume_id=1,
+                target_role_title="Backend Software Engineer",
+                learning_resources=self.sample_resources,
+                certifications=self.sample_certifications,
+                client=mock_client,
+            )
+        self.assertIn("Invalid JSON returned by Gemini", str(ctx.exception))
+
+    def test_empty_response_body_raises_parsing_error(self):
+        """Empty text body raises GeminiResponseParsingError."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = ""
+        mock_client.models.generate_content.return_value = mock_response
+
+        with self.assertRaises(GeminiResponseParsingError) as ctx:
+            generate_learning_roadmap(
+                resume_id=1,
+                target_role_title="Backend Software Engineer",
+                learning_resources=self.sample_resources,
+                client=mock_client,
+            )
+        self.assertIn("empty response body", str(ctx.exception))
+
+    def test_missing_api_key_raises_configuration_error(self):
+        """Missing GEMINI_API_KEY raises GeminiConfigurationError."""
+        with patch.object(settings, "GEMINI_API_KEY", None):
+            with self.assertRaises(GeminiConfigurationError):
+                generate_learning_roadmap(
+                    resume_id=1,
+                    target_role_title="Backend Software Engineer",
+                    learning_resources=self.sample_resources,
+                    client=None,
+                )
+
+    def test_gemini_quota_error_raised(self):
+        """Gemini 429 quota exhaustion raises GeminiQuotaExceededError."""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = genai_errors.APIError(
+            429, {"error": {"message": "Resource has been exhausted (e.g. check quota)."}}
+        )
+
+        with self.assertRaises(GeminiQuotaExceededError) as ctx:
+            generate_learning_roadmap(
+                resume_id=1,
+                target_role_title="Backend Software Engineer",
+                learning_resources=self.sample_resources,
+                client=mock_client,
+            )
+        self.assertIn("quota exceeded", str(ctx.exception).lower())
+
+    def test_gemini_network_error_raised(self):
+        """Connection timeout raises GeminiNetworkError."""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = TimeoutError("Connection timed out after 30s")
+
+        with self.assertRaises(GeminiNetworkError) as ctx:
+            generate_learning_roadmap(
+                resume_id=1,
+                target_role_title="Backend Software Engineer",
+                learning_resources=self.sample_resources,
+                client=mock_client,
+            )
+        self.assertIn("network error", str(ctx.exception).lower())
+
+    def test_privacy_protection_no_pii_in_prompt(self):
+        """Verify candidate PII (name, email, phone) is scrubbed before prompt assembly."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(self.valid_gemini_roadmap_payload)
+        mock_client.models.generate_content.return_value = mock_response
+
+        generate_learning_roadmap(
+            resume_id=1,
+            target_role_title="Developer john.doe@email.com",
+            verified_skills=["Python", "Phone: +1-555-555-5555"],
+            missing_skills=["Docker", "Contact: john.doe@email.com"],
+            learning_resources=self.sample_resources,
+            certifications=self.sample_certifications,
+            candidate_name="John Doe",
+            client=mock_client,
+        )
+
+        call_kwargs = mock_client.models.generate_content.call_args.kwargs
+        contents = call_kwargs["contents"]
+
+        self.assertNotIn("john.doe@email.com", contents)
+        self.assertNotIn("+1-555-555-5555", contents)
+        self.assertNotIn("John Doe", contents)
+        self.assertIn("Docker", contents)
+        self.assertIn("Python", contents)
+
+    def test_empty_catalog_returns_empty_roadmap_without_llm_call(self):
+        """When 0 resources and 0 certifications are supplied, return empty roadmap without calling Gemini."""
+        mock_client = MagicMock()
+
+        roadmap = generate_learning_roadmap(
+            resume_id=5,
+            target_role_title="Backend Engineer",
+            learning_resources=[],
+            certifications=[],
+            client=mock_client,
+        )
+
+        mock_client.models.generate_content.assert_not_called()
+        self.assertEqual(roadmap.total_phases, 0)
+        self.assertEqual(roadmap.total_items, 0)
+        self.assertEqual(len(roadmap.phases), 0)
+
+    def test_simplified_gemini_roadmap_schema_structure(self):
+        """
+        Verify that build_gemini_response_schema(GeminiRoadmapOutput) produces a minimal schema
+        without state-exploding constraints (no min_length, max_length, min_items, max_items, minimum, maximum).
+        """
+        schema = build_gemini_response_schema(GeminiRoadmapOutput)
+        self.assertIsInstance(schema, genai_types.Schema)
+        self.assertIsNone(schema.additional_properties)
+
+        dumped = schema.model_dump(by_alias=True, exclude_none=True)
+        dumped_json = json.dumps(dumped)
+
+        # Confirm no additional_properties
+        self.assertNotIn("additional_properties", dumped_json)
+        self.assertNotIn("additionalProperties", dumped_json)
+
+        # Confirm top-level properties are minimal (only summary and phases)
+        top_props = dumped.get("properties", {})
+        self.assertIn("phases", top_props)
+        self.assertIn("summary", top_props)
+        self.assertNotIn("resume_id", top_props)
+        self.assertNotIn("target_role_id", top_props)
+        self.assertNotIn("target_role_title", top_props)
+        self.assertNotIn("total_phases", top_props)
+        self.assertNotIn("total_items", top_props)
+        self.assertNotIn("generated_at", top_props)
+
+        # Confirm no state-exploding constraints in phases array items
+        phase_items = top_props["phases"].get("items", {})
+        self.assertNotIn("max_items", top_props["phases"])
+        self.assertNotIn("min_items", top_props["phases"])
+
+        phase_props = phase_items.get("properties", {})
+        self.assertIn("phase_number", phase_props)
+        self.assertIn("title", phase_props)
+        self.assertIn("description", phase_props)
+        self.assertIn("items", phase_props)
+        self.assertNotIn("min_length", phase_props.get("title", {}))
+        self.assertNotIn("max_length", phase_props.get("title", {}))
+        self.assertNotIn("minimum", phase_props.get("phase_number", {}))
+
+        # Confirm item properties in items array
+        item_items = phase_props["items"].get("items", {})
+        item_props = item_items.get("properties", {})
+        self.assertIn("item_type", item_props)
+        self.assertIn("resource_id", item_props)
+        self.assertIn("certification_id", item_props)
+        self.assertIn("personalized_explanation", item_props)
+        self.assertNotIn("min_length", item_props.get("personalized_explanation", {}))
+        self.assertNotIn("max_length", item_props.get("personalized_explanation", {}))
+        self.assertNotIn("minimum", item_props.get("resource_id", {}))
+
+    def test_simplified_payload_generation_and_normalization(self):
+        """
+        Verify that a minimal Gemini response containing ONLY phases and items
+        (without top-level metadata or sequence numbers) is parsed, validated, and enriched correctly.
+        """
+        mock_client = MagicMock()
+        minimal_payload = {
+            "summary": "Core foundational skills roadmap.",
+            "phases": [
+                {
+                    "phase_number": 1,
+                    "title": "Backend Essentials",
+                    "description": "Learn FastAPI and Docker basics.",
+                    "items": [
+                        {
+                            "item_type": "learning_resource",  # Lowercase test
+                            "resource_id": 12,
+                            "targeted_skill_name": "FastAPI",
+                            "personalized_explanation": "Master async backend development to bridge required skills.",
+                        },
+                        {
+                            "item_type": "LEARNING_RESOURCE",
+                            "resource_id": 10,
+                            "targeted_skill_name": "Docker",
+                            "personalized_explanation": "Gain containerization proficiency for microservice deployment.",
+                        },
+                    ],
+                }
+            ],
+        }
+
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(minimal_payload)
+        mock_client.models.generate_content.return_value = mock_response
+
+        roadmap = generate_learning_roadmap(
+            resume_id=8,
+            target_role_title="Backend Developer",
+            target_role_id=2,
+            learning_resources=self.sample_resources,
+            certifications=self.sample_certifications,
+            client=mock_client,
+        )
+
+        self.assertEqual(roadmap.resume_id, 8)
+        self.assertEqual(roadmap.target_role_id, 2)
+        self.assertEqual(roadmap.target_role_title, "Backend Developer")
+        self.assertEqual(roadmap.total_phases, 1)
+        self.assertEqual(roadmap.total_items, 2)
+        self.assertEqual(len(roadmap.phases), 1)
+
+        phase = roadmap.phases[0]
+        self.assertEqual(phase.phase_number, 1)
+        self.assertEqual(phase.title, "Backend Essentials")
+        self.assertEqual(len(phase.items), 2)
+
+        # Check item 1 enrichment and sequence order assignment
+        item1 = phase.items[0]
+        self.assertEqual(item1.item_type, RoadmapItemType.LEARNING_RESOURCE)
+        self.assertEqual(item1.resource_id, 12)
+        self.assertEqual(item1.title, "FastAPI Async Web Development")
+        self.assertEqual(item1.sequence_order, 1)
+
+        # Check item 2 enrichment
+        item2 = phase.items[1]
+        self.assertEqual(item2.item_type, RoadmapItemType.LEARNING_RESOURCE)
+        self.assertEqual(item2.resource_id, 10)
+        self.assertEqual(item2.title, "Official Docker Tutorial")
+        self.assertEqual(item2.sequence_order, 2)
+
+    def test_invalid_item_type_rejected(self):
+        """Item with an unrecognized item_type (e.g. 'BOOK') is rejected."""
+        mock_client = MagicMock()
+        bad_payload = {
+            "phases": [
+                {
+                    "phase_number": 1,
+                    "title": "Phase 1",
+                    "description": "General description",
+                    "items": [
+                        {
+                            "item_type": "UNSUPPORTED_TYPE",
+                            "resource_id": 10,
+                            "personalized_explanation": "Explanation for testing invalid type.",
+                        }
+                    ],
+                }
+            ]
+        }
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(bad_payload)
+        mock_client.models.generate_content.return_value = mock_response
+
+        with self.assertRaises(GeminiResponseParsingError) as ctx:
+            generate_learning_roadmap(
+                resume_id=1,
+                target_role_title="Backend Developer",
+                learning_resources=self.sample_resources,
+                client=mock_client,
+            )
+        self.assertIn("Invalid item_type 'UNSUPPORTED_TYPE'", str(ctx.exception))
+
+    def test_missing_required_resource_id_rejected(self):
+        """LEARNING_RESOURCE without resource_id fails validation."""
+        mock_client = MagicMock()
+        bad_payload = {
+            "phases": [
+                {
+                    "phase_number": 1,
+                    "title": "Phase 1",
+                    "description": "General description",
+                    "items": [
+                        {
+                            "item_type": "LEARNING_RESOURCE",
+                            "resource_id": None,
+                            "personalized_explanation": "Missing required database ID for learning resource.",
+                        }
+                    ],
+                }
+            ]
+        }
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(bad_payload)
+        mock_client.models.generate_content.return_value = mock_response
+
+        with self.assertRaises(GeminiResponseParsingError) as ctx:
+            generate_learning_roadmap(
+                resume_id=1,
+                target_role_title="Backend Developer",
+                learning_resources=self.sample_resources,
+                client=mock_client,
+            )
+        self.assertIn("resource_id is required", str(ctx.exception))
+
 
 
 if __name__ == "__main__":

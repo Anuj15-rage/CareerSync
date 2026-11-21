@@ -19,6 +19,8 @@ from backend.models import (
     ResumeImprovementSuggestion,
     ResumeProject,
     ResumeSkill,
+    SessionCertificationRecommendation,
+    SessionResourceRecommendation,
     Skill,
     SkillGap,
 )
@@ -38,6 +40,7 @@ from backend.services.gemini_service import (
     GeminiQuotaExceededError,
     GeminiResponseParsingError,
     GeminiServiceError,
+    generate_learning_roadmap,
     generate_resume_improvement_suggestions,
 )
 from backend.schemas.matching import (
@@ -49,6 +52,7 @@ from backend.schemas.matching import (
 from backend.schemas.recommendation import (
     CareerRecommendationItem,
     CertificationRecommendationItem,
+    EnrichedLearningRoadmapResponse,
     ResourceRecommendationItem,
     ResumeCareerRecommendationsResponse,
     ResumeCertificationsResponse,
@@ -1154,6 +1158,228 @@ def get_single_role_resource_recommendations(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while retrieving resource recommendations.",
+        )
+
+
+@router.post(
+    "/{resume_id}/resource-recommendations/roadmap",
+    response_model=EnrichedLearningRoadmapResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate a personalized, Gemini-grounded learning roadmap for a specific target role",
+)
+def generate_resource_roadmap_endpoint(
+    resume_id: int,
+    target_role_id: Optional[int] = None,
+    job_role_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_resume: Resume = Depends(verify_resume_access),
+):
+    """
+    Generates a personalized, phased learning roadmap using Google Gemini.
+
+    Guarantees:
+    - Protected by verify_resume_access (requires valid X-Resume-Token matching the authenticated resume).
+    - Scoped strictly to the authenticated resume and specified target role/session.
+    - Resources and certifications from other roles or sessions are strictly prevented from mixing in.
+    - Gemini is only supplied with vetted database resources and certifications from this session.
+    - Zero PII (candidate name, email, phone, raw resume text, file hashes, tokens) is transmitted.
+    - Enforces database grounding: rejects any unapproved or hallucinated IDs.
+    - Returns enriched response with verified database titles, URLs, and platforms.
+    """
+    if current_resume.analysis_completed_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Resume with ID {resume_id} has not been analyzed yet. Please run resume analysis first.",
+        )
+
+    # 1. Resolve effective target role ID
+    effective_role_id = target_role_id if target_role_id is not None else job_role_id
+
+    # 2. Retrieve the specific AnalysisSession for this role/resume
+    session: Optional[AnalysisSession] = None
+    if effective_role_id is not None:
+        role_obj = db.query(JobRole).filter(JobRole.id == effective_role_id, JobRole.is_active == True).first()
+        if not role_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Active JobRole with ID {effective_role_id} not found.",
+            )
+
+        session = (
+            db.query(AnalysisSession)
+            .filter(
+                AnalysisSession.resume_id == resume_id,
+                AnalysisSession.job_role_id == effective_role_id,
+            )
+            .order_by(AnalysisSession.created_at.desc())
+            .first()
+        )
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No analysis session found for resume {resume_id} and target role {effective_role_id}.",
+            )
+    else:
+        session = (
+            db.query(AnalysisSession)
+            .filter(
+                AnalysisSession.resume_id == resume_id,
+                AnalysisSession.job_role_id.isnot(None),
+            )
+            .order_by(AnalysisSession.compatibility_score.desc().nullslast(), AnalysisSession.created_at.desc())
+            .first()
+        )
+        if not session:
+            session = (
+                db.query(AnalysisSession)
+                .filter(AnalysisSession.resume_id == resume_id)
+                .order_by(AnalysisSession.created_at.desc())
+                .first()
+            )
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No evaluated target role sessions found for resume {resume_id}. Please run resume analysis first.",
+            )
+
+    # 3. Retrieve verified skill gaps for this specific session
+    missing_skills: List[str] = [
+        gap.skill.name for gap in session.skill_gaps if gap.skill and gap.skill.name
+    ]
+
+    # 4. Retrieve candidate's verified resume skills
+    verified_skills: List[str] = [
+        rs.skill.name for rs in current_resume.skills if rs.skill and rs.skill.name
+    ]
+
+    # 5. Retrieve existing rule-based database resource & certification recommendations for this session
+    res_recs = (
+        db.query(SessionResourceRecommendation)
+        .filter(SessionResourceRecommendation.session_id == session.id)
+        .order_by(SessionResourceRecommendation.priority_order.asc(), SessionResourceRecommendation.id.asc())
+        .all()
+    )
+    cert_recs = (
+        db.query(SessionCertificationRecommendation)
+        .filter(SessionCertificationRecommendation.session_id == session.id)
+        .order_by(SessionCertificationRecommendation.id.asc())
+        .all()
+    )
+
+    # If recommendations were never generated across this resume, generate deterministic recommendations first
+    if not res_recs and not cert_recs:
+        total_recs = (
+            db.query(SessionResourceRecommendation)
+            .join(AnalysisSession, SessionResourceRecommendation.session_id == AnalysisSession.id)
+            .filter(AnalysisSession.resume_id == resume_id)
+            .count()
+        )
+        if total_recs == 0:
+            try:
+                generate_and_persist_resource_recommendations(resume_id=resume_id, db=db)
+                res_recs = (
+                    db.query(SessionResourceRecommendation)
+                    .filter(SessionResourceRecommendation.session_id == session.id)
+                    .order_by(SessionResourceRecommendation.priority_order.asc(), SessionResourceRecommendation.id.asc())
+                    .all()
+                )
+                cert_recs = (
+                    db.query(SessionCertificationRecommendation)
+                    .filter(SessionCertificationRecommendation.session_id == session.id)
+                    .order_by(SessionCertificationRecommendation.id.asc())
+                    .all()
+                )
+            except Exception as gen_err:
+                logger.error("Failed to generate base recommendations for resume %d: %s", resume_id, gen_err)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Database error generating base recommendations for resume {resume_id}.",
+                )
+
+    # Build payload containing ONLY verified database recommendations for this exact session
+    learning_resources_payload = []
+    for r in res_recs:
+        res = r.resource_skill.resource if r.resource_skill else None
+        skill = r.resource_skill.skill if r.resource_skill else None
+        if res:
+            learning_resources_payload.append({
+                "resource_id": r.resource_id,
+                "title": res.title,
+                "platform_name": res.platform_name,
+                "url": res.url,
+                "targeted_skill_id": r.skill_id,
+                "targeted_skill_name": skill.name if skill else f"Skill #{r.skill_id}",
+                "difficulty_level": res.difficulty_level,
+                "is_free": res.is_free,
+            })
+
+    certifications_payload = []
+    for c in cert_recs:
+        cert = c.certification_skill.certification if c.certification_skill else None
+        skill = c.certification_skill.skill if c.certification_skill else None
+        if cert:
+            provider_name = cert.provider.name if cert.provider else "Accredited Body"
+            certifications_payload.append({
+                "certification_id": c.certification_id,
+                "name": cert.name,
+                "code": cert.code,
+                "provider_name": provider_name,
+                "level": cert.level,
+                "official_url": cert.official_url,
+                "targeted_skill_id": c.skill_id,
+                "targeted_skill_name": skill.name if skill else f"Skill #{c.skill_id}",
+            })
+
+    # 6. Invoke Gemini learning roadmap generation
+    try:
+        roadmap = generate_learning_roadmap(
+            resume_id=resume_id,
+            target_role_title=session.target_role_title,
+            target_role_id=session.job_role_id,
+            verified_skills=verified_skills,
+            missing_skills=missing_skills,
+            learning_resources=learning_resources_payload,
+            certifications=certifications_payload,
+            candidate_name=current_resume.candidate_name,
+        )
+        return roadmap
+    except GeminiConfigurationError as gce:
+        logger.error("Gemini configuration error generating roadmap for resume %d: %s", resume_id, gce)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GEMINI_API_KEY is not configured on the server. Please check environment configuration.",
+        )
+    except GeminiQuotaExceededError as gqe:
+        logger.warning("Gemini quota exceeded for roadmap resume %d: %s", resume_id, gqe)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Gemini API rate limit or quota exceeded. Please try again later.",
+        )
+    except GeminiNetworkError as gne:
+        logger.error("Gemini network error generating roadmap for resume %d: %s", resume_id, gne)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Network error communicating with the Gemini API. Please try again.",
+        )
+    except GeminiResponseParsingError as grpe:
+        logger.error("Gemini roadmap parsing error for resume %d: %s", resume_id, grpe)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Invalid or malformed structured response received from Gemini: {grpe}",
+        )
+    except GeminiServiceError as gse:
+        logger.error("Gemini service error for roadmap resume %d: %s", resume_id, gse)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while generating learning roadmap: {gse}",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Unexpected error in roadmap generation endpoint for resume %d: %s", resume_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the learning roadmap.",
         )
 
 

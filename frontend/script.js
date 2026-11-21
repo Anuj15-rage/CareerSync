@@ -184,6 +184,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const resourceRecCertCountBadge = document.getElementById('resourceRecCertCountBadge');
   const resourceRecCertList = document.getElementById('resourceRecCertList');
 
+  // Personalized Learning Roadmap DOM references (Gemini Grounded)
+  const generateRoadmapBtn = document.getElementById('generateRoadmapBtn');
+  const generateRoadmapBtnText = document.getElementById('generateRoadmapBtnText');
+  const roadmapEmptyCard = document.getElementById('roadmapEmptyCard');
+  const roadmapEmptyTitle = document.getElementById('roadmapEmptyTitle');
+  const roadmapEmptyDesc = document.getElementById('roadmapEmptyDesc');
+  const roadmapLoadingCard = document.getElementById('roadmapLoadingCard');
+  const roadmapLoadingTitle = document.getElementById('roadmapLoadingTitle');
+  const roadmapLoadingDesc = document.getElementById('roadmapLoadingDesc');
+  const roadmapErrorCard = document.getElementById('roadmapErrorCard');
+  const roadmapErrorMessage = document.getElementById('roadmapErrorMessage');
+  const roadmapRetryBtn = document.getElementById('roadmapRetryBtn');
+  const roadmapResultsContainer = document.getElementById('roadmapResultsContainer');
+  const roadmapMetaSummary = document.getElementById('roadmapMetaSummary');
+  const roadmapSummaryTitle = document.getElementById('roadmapSummaryTitle');
+  const roadmapSummaryText = document.getElementById('roadmapSummaryText');
+  const roadmapPhasesList = document.getElementById('roadmapPhasesList');
+
   // Resume Improvement DOM references (Gemini)
   const generateImprovementBtn = document.getElementById('generateImprovementBtn');
   const generateImprovementBtnText = document.getElementById('generateImprovementBtnText');
@@ -252,6 +270,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedResourceRecFilter = 'all'; // 'all', 'resources', 'certifications'
   let isResourceRecAnalyzing = false;
 
+  // Personalized Learning Roadmap State
+  let isGeneratingRoadmap = false;
+  const roadmapsCache = new Map(); // key (jobRoleId) -> EnrichedLearningRoadmapResponse
+
   // Resume Improvement Suggestions State (Gemini)
   let isGeneratingImprovements = false;
   let selectedImprovementRoleId = null; // null represents General Software Engineering Profile
@@ -269,6 +291,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let isExpandedSkillGap = false;
   let isExpandedCareerRec = false;
   let isExpandedResourceRec = false;
+
+  // Independent Dropdown Open State for Role Selection Lists (More Options)
+  let isJobMatchingMoreOpen = false;
+  let isSkillGapMoreOpen = false;
+  let isCareerRecMoreOpen = false;
+  let isResourceRecMoreOpen = false;
 
   /**
    * Helper to format and clean role titles by removing legacy prefixes
@@ -353,6 +381,179 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
+   * Partitions roles for any section into primary visible roles and other dropdown roles:
+   * - Primary: Target role first (if present) + Top 5 alternatives by score descending.
+   * - Other: Remaining alternatives (6th+) to be shown in the "More Options" dropdown.
+   */
+  function partitionSectionRoles(rawItems, targetRoleId) {
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      return { primaryRoles: [], otherRoles: [] };
+    }
+
+    const scoreMap = new Map();
+    if (currentMatchingData && Array.isArray(currentMatchingData.matches)) {
+      currentMatchingData.matches.forEach(m => scoreMap.set(m.job_role_id, m.match_score));
+    }
+
+    const getScore = (item) => {
+      if (scoreMap.has(item.job_role_id)) return scoreMap.get(item.job_role_id);
+      if (item.match_score !== undefined) return item.match_score;
+      if (item.match_percentage !== undefined) return item.match_percentage;
+      if (item.compatibility_score !== undefined) return item.compatibility_score;
+      return 0;
+    };
+
+    let targetItem = null;
+    const alternatives = [];
+
+    rawItems.forEach(item => {
+      if (targetRoleId && item.job_role_id === targetRoleId) {
+        targetItem = item;
+      } else {
+        alternatives.push(item);
+      }
+    });
+
+    alternatives.sort((a, b) => getScore(b) - getScore(a));
+
+    const top5Alternatives = alternatives.slice(0, 5);
+    const primaryRoles = targetItem ? [targetItem, ...top5Alternatives] : top5Alternatives;
+    const otherRoles = alternatives.slice(5);
+
+    return { primaryRoles, otherRoles };
+  }
+
+  /**
+   * Generic renderer for the "More Options" dropdown across Job Matching, Skill Gap, Career Rec, and Learning Resources.
+   * Uses the exact structure, styling, caret behavior, and interaction as Resume Improvement Suggestions.
+   */
+  function renderRoleDropdown({
+    parentList,
+    containerClass,
+    sectionKey,
+    otherRoles,
+    selectedRoleId,
+    getIsOpen,
+    setIsOpen,
+    onSelectRole,
+    renderActiveBadge,
+    renderItemMeta
+  }) {
+    if (!otherRoles || otherRoles.length === 0) return;
+
+    const dropdownContainer = document.createElement('div');
+    dropdownContainer.className = `role-dropdown-container ${containerClass || ''}`;
+
+    const activeOtherRole = otherRoles.find(r => r.job_role_id === selectedRoleId);
+    const isOpen = getIsOpen();
+
+    const dropdownBtn = document.createElement('button');
+    dropdownBtn.type = 'button';
+    dropdownBtn.className = activeOtherRole
+      ? 'btn btn-primary more-toggle-btn more-options-trigger'
+      : 'btn btn-secondary more-toggle-btn more-options-trigger';
+    dropdownBtn.style.fontSize = '0.82rem';
+    dropdownBtn.style.padding = '6px 12px';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = activeOtherRole
+      ? `More Options: ${formatJobRoleTitle(activeOtherRole.job_role_title)}`
+      : 'More Options';
+    dropdownBtn.appendChild(labelSpan);
+
+    if (activeOtherRole && typeof renderActiveBadge === 'function') {
+      const badge = renderActiveBadge(activeOtherRole);
+      if (badge) dropdownBtn.appendChild(badge);
+    }
+
+    const caretSpan = document.createElement('span');
+    caretSpan.className = 'dropdown-caret';
+    caretSpan.textContent = isOpen ? '▴' : '▾';
+    dropdownBtn.appendChild(caretSpan);
+
+    const dropdownMenu = document.createElement('div');
+    dropdownMenu.className = `role-dropdown-menu ${isOpen ? '' : 'hidden'}`;
+
+    otherRoles.forEach(roleItem => {
+      const itemBtn = document.createElement('button');
+      itemBtn.type = 'button';
+      itemBtn.className = `role-dropdown-item ${roleItem.job_role_id === selectedRoleId ? 'active' : ''}`;
+
+      const itemTitle = document.createElement('span');
+      itemTitle.textContent = formatJobRoleTitle(roleItem.job_role_title);
+      itemBtn.appendChild(itemTitle);
+
+      const itemMeta = document.createElement('span');
+      itemMeta.style.display = 'inline-flex';
+      itemMeta.style.alignItems = 'center';
+      itemMeta.style.gap = '6px';
+
+      if (typeof renderItemMeta === 'function') {
+        const metaEl = renderItemMeta(roleItem);
+        if (metaEl) itemMeta.appendChild(metaEl);
+      }
+
+      if (roleItem.job_role_id === selectedRoleId) {
+        const checkSpan = document.createElement('span');
+        checkSpan.style.fontWeight = '700';
+        checkSpan.style.color = 'var(--accent-purple)';
+        checkSpan.textContent = '✓';
+        itemMeta.appendChild(checkSpan);
+      }
+
+      itemBtn.appendChild(itemMeta);
+
+      itemBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setIsOpen(false);
+        dropdownMenu.classList.add('hidden');
+        caretSpan.textContent = '▾';
+        onSelectRole(roleItem.job_role_id);
+      });
+
+      dropdownMenu.appendChild(itemBtn);
+    });
+
+    dropdownBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeOtherRoleDropdowns(sectionKey);
+      const nextOpen = !getIsOpen();
+      setIsOpen(nextOpen);
+      dropdownMenu.classList.toggle('hidden', !nextOpen);
+      caretSpan.textContent = nextOpen ? '▴' : '▾';
+    });
+
+    dropdownContainer.appendChild(dropdownBtn);
+    dropdownContainer.appendChild(dropdownMenu);
+    parentList.appendChild(dropdownContainer);
+  }
+
+  /**
+   * Helper to close other section role dropdowns on outside click, Escape, or opening a different dropdown.
+   */
+  function closeOtherRoleDropdowns(exceptSection = null, clickTarget = null) {
+    const dropdownConfigs = [
+      { key: 'job-matching', selector: '.job-matching-dropdown-container', setOpen: (v) => { isJobMatchingMoreOpen = v; } },
+      { key: 'skill-gap', selector: '.skill-gap-dropdown-container', setOpen: (v) => { isSkillGapMoreOpen = v; } },
+      { key: 'career-rec', selector: '.career-rec-dropdown-container', setOpen: (v) => { isCareerRecMoreOpen = v; } },
+      { key: 'resource-rec', selector: '.resource-rec-dropdown-container', setOpen: (v) => { isResourceRecMoreOpen = v; } },
+    ];
+
+    dropdownConfigs.forEach(cfg => {
+      if (exceptSection === cfg.key) return;
+      const container = document.querySelector(cfg.selector);
+      if (!container) return;
+      if (clickTarget && container.contains(clickTarget)) return;
+
+      cfg.setOpen(false);
+      const menu = container.querySelector('.role-dropdown-menu');
+      if (menu) menu.classList.add('hidden');
+      const caret = container.querySelector('.dropdown-caret');
+      if (caret) caret.textContent = '▾';
+    });
+  }
+
+  /**
    * Synchronize selected career role across all relevant sections:
    * - Job Matching
    * - Skill Gap Analysis
@@ -366,7 +567,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isNaN(roleId) || roleId <= 0) return;
     if (isSyncingRoleSelection) return;
 
-    // Automatically collapse the section where the user clicked if it was expanded
+    // Automatically collapse and close role dropdowns
+    closeOtherRoleDropdowns(null);
+    isJobMatchingMoreOpen = false;
+    isSkillGapMoreOpen = false;
+    isCareerRecMoreOpen = false;
+    isResourceRecMoreOpen = false;
     if (options.source === 'job-matching') {
       isExpandedJobMatching = false;
     } else if (options.source === 'skill-gap') {
@@ -1069,6 +1275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentMatchingRequestId++;
     currentMatchingData = null;
     selectedJobRoleId = null;
+    isJobMatchingMoreOpen = false;
 
     if (jobMatchingLoadingCard) jobMatchingLoadingCard.classList.add('hidden');
     if (jobMatchingErrorCard) jobMatchingErrorCard.classList.add('hidden');
@@ -1090,7 +1297,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (jobRoleSelectorList) {
       const buttons = jobRoleSelectorList.querySelectorAll('button');
       buttons.forEach(btn => {
-        if (btn.classList.contains('more-toggle-btn')) return;
+        if (
+          btn.classList.contains('more-toggle-btn') ||
+          btn.classList.contains('more-options-trigger') ||
+          btn.classList.contains('role-dropdown-item')
+        ) return;
         const btnRoleId = parseInt(btn.getAttribute('data-role-id'), 10);
         if (btnRoleId === roleMatch.job_role_id) {
           btn.className = 'btn btn-primary';
@@ -1274,15 +1485,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const targetMatch = getTargetRoleMatch();
     const targetRoleId = targetMatch ? targetMatch.job_role_id : null;
-    const displayedMatches = buildSectionRoleDisplayList(
-      currentMatchingData.matches,
-      isExpandedJobMatching,
-      targetRoleId,
-      selectedJobRoleId
-    );
+    const { primaryRoles, otherRoles } = partitionSectionRoles(currentMatchingData.matches, targetRoleId);
 
     jobRoleSelectorList.innerHTML = '';
-    displayedMatches.forEach(roleMatch => {
+    primaryRoles.forEach(roleMatch => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.setAttribute('data-role-id', String(roleMatch.job_role_id));
@@ -1316,18 +1522,40 @@ document.addEventListener('DOMContentLoaded', () => {
       jobRoleSelectorList.appendChild(btn);
     });
 
-    // More / Less Toggle Button
-    const moreBtn = document.createElement('button');
-    moreBtn.type = 'button';
-    moreBtn.className = 'btn btn-secondary more-toggle-btn';
-    moreBtn.textContent = isExpandedJobMatching ? 'Less ▴' : 'More ▾';
-    moreBtn.title = isExpandedJobMatching ? 'Show top roles' : 'Show all 18 roles';
-    moreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      isExpandedJobMatching = !isExpandedJobMatching;
-      renderJobMatchingButtons();
+    renderRoleDropdown({
+      parentList: jobRoleSelectorList,
+      containerClass: 'job-matching-dropdown-container',
+      sectionKey: 'job-matching',
+      otherRoles,
+      selectedRoleId: selectedJobRoleId,
+      getIsOpen: () => isJobMatchingMoreOpen,
+      setIsOpen: (val) => { isJobMatchingMoreOpen = val; },
+      onSelectRole: (roleId) => {
+        selectCareerRole(roleId, { source: 'job-matching' });
+      },
+      renderActiveBadge: (role) => {
+        if (role && role.match_score !== undefined) {
+          const badge = document.createElement('span');
+          badge.style.fontSize = '0.72rem';
+          badge.style.fontWeight = '700';
+          badge.style.opacity = '0.9';
+          badge.style.marginLeft = '6px';
+          badge.textContent = `${role.match_score.toFixed(1)}%`;
+          return badge;
+        }
+        return null;
+      },
+      renderItemMeta: (role) => {
+        if (role && role.match_score !== undefined && role.match_score !== null) {
+          const scoreSpan = document.createElement('span');
+          scoreSpan.style.fontSize = '0.72rem';
+          scoreSpan.style.color = 'var(--text-muted)';
+          scoreSpan.textContent = `${role.match_score.toFixed(1)}%`;
+          return scoreSpan;
+        }
+        return null;
+      }
     });
-    jobRoleSelectorList.appendChild(moreBtn);
   }
 
   async function fetchAndRenderJobMatching(resumeId) {
@@ -1406,6 +1634,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentSkillGapData = null;
     selectedSkillGapRoleId = null;
     isSkillGapAnalyzing = false;
+    isSkillGapMoreOpen = false;
 
     if (skillGapLoadingCard) skillGapLoadingCard.classList.add('hidden');
     if (skillGapErrorCard) skillGapErrorCard.classList.add('hidden');
@@ -1413,6 +1642,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (skillGapEmptyCard) skillGapEmptyCard.classList.remove('hidden');
 
     updateDashboardOverview();
+  }
+
+  function formatGapReason(reason) {
+    if (!reason) return '';
+    // Strip technical weight values: e.g. (weight: 1.00) or (weight: 0.75)
+    // and normalize quotes around skill name if present: 'React' -> React
+    return reason
+      .replace(/\s*\(weight:\s*[\d.]+\)/gi, '')
+      .replace(/:\s*'([^']+)'/g, ': $1');
   }
 
   function renderSelectedSkillGapDetail(jobRoleId) {
@@ -1426,7 +1664,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (skillGapRoleSelectorList) {
       const buttons = skillGapRoleSelectorList.querySelectorAll('button');
       buttons.forEach(btn => {
-        if (btn.classList.contains('more-toggle-btn')) return;
+        if (
+          btn.classList.contains('more-toggle-btn') ||
+          btn.classList.contains('more-options-trigger') ||
+          btn.classList.contains('role-dropdown-item')
+        ) return;
         const btnRoleId = parseInt(btn.getAttribute('data-role-id'), 10);
         if (btnRoleId === role.job_role_id) {
           btn.className = 'btn btn-primary';
@@ -1493,7 +1735,7 @@ document.addEventListener('DOMContentLoaded', () => {
           badge.style.color = '#ef4444';
           badge.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
           badge.style.border = '1px solid rgba(239, 68, 68, 0.2)';
-          badge.textContent = `Required • wt: ${gap.weight.toFixed(1)}`;
+          badge.textContent = 'Required';
           hdr.appendChild(badge);
 
           card.appendChild(hdr);
@@ -1502,7 +1744,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const desc = document.createElement('div');
             desc.className = 'entity-item-desc';
             desc.style.fontSize = '0.78rem';
-            desc.textContent = gap.reason;
+            desc.textContent = formatGapReason(gap.reason);
             card.appendChild(desc);
           }
 
@@ -1545,7 +1787,7 @@ document.addEventListener('DOMContentLoaded', () => {
           badge.style.color = '#f59e0b';
           badge.style.backgroundColor = 'rgba(245, 158, 11, 0.1)';
           badge.style.border = '1px solid rgba(245, 158, 11, 0.2)';
-          badge.textContent = `Preferred • wt: ${gap.weight.toFixed(1)}`;
+          badge.textContent = 'Preferred';
           hdr.appendChild(badge);
 
           card.appendChild(hdr);
@@ -1554,7 +1796,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const desc = document.createElement('div');
             desc.className = 'entity-item-desc';
             desc.style.fontSize = '0.78rem';
-            desc.textContent = gap.reason;
+            desc.textContent = formatGapReason(gap.reason);
             card.appendChild(desc);
           }
 
@@ -1585,7 +1827,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           const sourceSpan = document.createElement('span');
           sourceSpan.className = 'skill-chip-source';
-          sourceSpan.textContent = `${formatExtractionSource(s.extraction_source)} • wt: ${s.weight.toFixed(1)}`;
+          sourceSpan.textContent = formatExtractionSource(s.extraction_source);
           chip.appendChild(sourceSpan);
 
           gapPossessedChipsList.appendChild(chip);
@@ -1644,15 +1886,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const targetMatch = getTargetRoleMatch();
     const targetRoleId = targetMatch ? targetMatch.job_role_id : null;
-    const displayedGaps = buildSectionRoleDisplayList(
-      currentSkillGapData.role_gaps,
-      isExpandedSkillGap,
-      targetRoleId,
-      selectedSkillGapRoleId
-    );
+    const { primaryRoles, otherRoles } = partitionSectionRoles(currentSkillGapData.role_gaps, targetRoleId);
 
     skillGapRoleSelectorList.innerHTML = '';
-    displayedGaps.forEach(rg => {
+    primaryRoles.forEach(rg => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.setAttribute('data-role-id', String(rg.job_role_id));
@@ -1686,18 +1923,40 @@ document.addEventListener('DOMContentLoaded', () => {
       skillGapRoleSelectorList.appendChild(btn);
     });
 
-    // More / Less Toggle Button
-    const moreBtn = document.createElement('button');
-    moreBtn.type = 'button';
-    moreBtn.className = 'btn btn-secondary more-toggle-btn';
-    moreBtn.textContent = isExpandedSkillGap ? 'Less ▴' : 'More ▾';
-    moreBtn.title = isExpandedSkillGap ? 'Show top roles' : 'Show all 18 roles';
-    moreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      isExpandedSkillGap = !isExpandedSkillGap;
-      renderSkillGapButtons();
+    renderRoleDropdown({
+      parentList: skillGapRoleSelectorList,
+      containerClass: 'skill-gap-dropdown-container',
+      sectionKey: 'skill-gap',
+      otherRoles,
+      selectedRoleId: selectedSkillGapRoleId,
+      getIsOpen: () => isSkillGapMoreOpen,
+      setIsOpen: (val) => { isSkillGapMoreOpen = val; },
+      onSelectRole: (roleId) => {
+        selectCareerRole(roleId, { source: 'skill-gap' });
+      },
+      renderActiveBadge: (role) => {
+        if (role) {
+          const badge = document.createElement('span');
+          badge.style.fontSize = '0.72rem';
+          badge.style.fontWeight = '700';
+          badge.style.opacity = '0.9';
+          badge.style.marginLeft = '6px';
+          badge.textContent = `${role.critical_missing_count} crit / ${role.secondary_missing_count} sec`;
+          return badge;
+        }
+        return null;
+      },
+      renderItemMeta: (role) => {
+        if (role) {
+          const gapSpan = document.createElement('span');
+          gapSpan.style.fontSize = '0.72rem';
+          gapSpan.style.color = 'var(--text-muted)';
+          gapSpan.textContent = `${role.critical_missing_count} crit / ${role.secondary_missing_count} sec`;
+          return gapSpan;
+        }
+        return null;
+      }
     });
-    skillGapRoleSelectorList.appendChild(moreBtn);
   }
 
   async function fetchAndRenderSkillGaps(resumeId) {
@@ -1846,6 +2105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentCareerRecData = null;
     selectedCareerRecRoleId = null;
     isCareerRecAnalyzing = false;
+    isCareerRecMoreOpen = false;
 
     if (careerRecLoadingCard) careerRecLoadingCard.classList.add('hidden');
     if (careerRecErrorCard) careerRecErrorCard.classList.add('hidden');
@@ -1864,7 +2124,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (careerRecRoleSelectorList) {
       const buttons = careerRecRoleSelectorList.querySelectorAll('button');
       buttons.forEach(btn => {
-        if (btn.classList.contains('more-toggle-btn')) return;
+        if (
+          btn.classList.contains('more-toggle-btn') ||
+          btn.classList.contains('more-options-trigger') ||
+          btn.classList.contains('role-dropdown-item')
+        ) return;
         const btnRoleId = parseInt(btn.getAttribute('data-role-id'), 10);
         if (btnRoleId === rec.job_role_id) {
           btn.className = 'btn btn-primary';
@@ -2040,15 +2304,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const targetMatch = getTargetRoleMatch();
     const targetRoleId = targetMatch ? targetMatch.job_role_id : null;
-    const displayedRecs = buildSectionRoleDisplayList(
-      currentCareerRecData.recommendations,
-      isExpandedCareerRec,
-      targetRoleId,
-      selectedCareerRecRoleId
-    );
+    const { primaryRoles, otherRoles } = partitionSectionRoles(currentCareerRecData.recommendations, targetRoleId);
 
     careerRecRoleSelectorList.innerHTML = '';
-    displayedRecs.forEach(rec => {
+    primaryRoles.forEach(rec => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.setAttribute('data-role-id', String(rec.job_role_id));
@@ -2090,18 +2349,41 @@ document.addEventListener('DOMContentLoaded', () => {
       careerRecRoleSelectorList.appendChild(btn);
     });
 
-    // More / Less Toggle Button
-    const moreBtn = document.createElement('button');
-    moreBtn.type = 'button';
-    moreBtn.className = 'btn btn-secondary more-toggle-btn';
-    moreBtn.textContent = isExpandedCareerRec ? 'Less ▴' : 'More ▾';
-    moreBtn.title = isExpandedCareerRec ? 'Show top roles' : 'Show all 18 roles';
-    moreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      isExpandedCareerRec = !isExpandedCareerRec;
-      renderCareerRecButtons();
+    renderRoleDropdown({
+      parentList: careerRecRoleSelectorList,
+      containerClass: 'career-rec-dropdown-container',
+      sectionKey: 'career-rec',
+      otherRoles,
+      selectedRoleId: selectedCareerRecRoleId,
+      getIsOpen: () => isCareerRecMoreOpen,
+      setIsOpen: (val) => { isCareerRecMoreOpen = val; },
+      onSelectRole: (roleId) => {
+        selectCareerRole(roleId, { source: 'career-recommendations' });
+      },
+      renderActiveBadge: (role) => {
+        if (role) {
+          const fitInfo = formatFitLevel(role.fit_level);
+          const badge = document.createElement('span');
+          badge.style.fontSize = '0.72rem';
+          badge.style.fontWeight = '700';
+          badge.style.opacity = '0.9';
+          badge.style.marginLeft = '6px';
+          badge.textContent = `${role.match_percentage.toFixed(1)}% (${fitInfo.text})`;
+          return badge;
+        }
+        return null;
+      },
+      renderItemMeta: (role) => {
+        if (role) {
+          const rankSpan = document.createElement('span');
+          rankSpan.style.fontSize = '0.72rem';
+          rankSpan.style.color = 'var(--text-muted)';
+          rankSpan.textContent = `#${role.rank} • ${role.match_percentage.toFixed(1)}%`;
+          return rankSpan;
+        }
+        return null;
+      }
     });
-    careerRecRoleSelectorList.appendChild(moreBtn);
   }
 
   async function fetchAndRenderCareerRecommendations(resumeId) {
@@ -2306,6 +2588,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentResourceRecData = null;
     selectedResourceRecRoleId = null;
     selectedResourceRecFilter = 'all';
+    isResourceRecMoreOpen = false;
 
     if (resourceRecLoadingCard) resourceRecLoadingCard.classList.add('hidden');
     if (resourceRecErrorCard) resourceRecErrorCard.classList.add('hidden');
@@ -2313,6 +2596,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resourceRecEmptyCard) resourceRecEmptyCard.classList.remove('hidden');
 
     applyResourceFilter('all');
+    resetRoadmapState();
   }
 
   function renderSelectedResourceRecDetail(jobRoleId) {
@@ -2325,7 +2609,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resourceRecRoleSelectorList) {
       const buttons = resourceRecRoleSelectorList.querySelectorAll('button');
       buttons.forEach(btn => {
-        if (btn.classList.contains('more-toggle-btn')) return;
+        if (
+          btn.classList.contains('more-toggle-btn') ||
+          btn.classList.contains('more-options-trigger') ||
+          btn.classList.contains('role-dropdown-item')
+        ) return;
         const btnRoleId = parseInt(btn.getAttribute('data-role-id'), 10);
         if (btnRoleId === roleItem.job_role_id) {
           btn.className = 'btn btn-primary';
@@ -2592,6 +2880,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 6. Apply filter to adjust visibility
     applyResourceFilter(selectedResourceRecFilter);
+
+    // 7. Update roadmap view for selected role
+    updateRoadmapViewForRole(roleItem.job_role_id, roleItem.job_role_title);
   }
 
   function renderResourceRecommendations(data) {
@@ -2642,15 +2933,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const targetMatch = getTargetRoleMatch();
     const targetRoleId = targetMatch ? targetMatch.job_role_id : null;
-    const displayedRoles = buildSectionRoleDisplayList(
-      currentResourceRecData.roles,
-      isExpandedResourceRec,
-      targetRoleId,
-      selectedResourceRecRoleId
-    );
+    const { primaryRoles, otherRoles } = partitionSectionRoles(currentResourceRecData.roles, targetRoleId);
 
     resourceRecRoleSelectorList.innerHTML = '';
-    displayedRoles.forEach(roleItem => {
+    primaryRoles.forEach(roleItem => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.setAttribute('data-role-id', String(roleItem.job_role_id));
@@ -2687,18 +2973,44 @@ document.addEventListener('DOMContentLoaded', () => {
       resourceRecRoleSelectorList.appendChild(btn);
     });
 
-    // More / Less Toggle Button
-    const moreBtn = document.createElement('button');
-    moreBtn.type = 'button';
-    moreBtn.className = 'btn btn-secondary more-toggle-btn';
-    moreBtn.textContent = isExpandedResourceRec ? 'Less ▴' : 'More ▾';
-    moreBtn.title = isExpandedResourceRec ? 'Show top roles' : 'Show all 18 roles';
-    moreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      isExpandedResourceRec = !isExpandedResourceRec;
-      renderResourceRecButtons();
+    renderRoleDropdown({
+      parentList: resourceRecRoleSelectorList,
+      containerClass: 'resource-rec-dropdown-container',
+      sectionKey: 'resource-rec',
+      otherRoles,
+      selectedRoleId: selectedResourceRecRoleId,
+      getIsOpen: () => isResourceRecMoreOpen,
+      setIsOpen: (val) => { isResourceRecMoreOpen = val; },
+      onSelectRole: (roleId) => {
+        selectCareerRole(roleId, { source: 'learning-resources' });
+      },
+      renderActiveBadge: (role) => {
+        if (role) {
+          const rCount = role.learning_resources ? role.learning_resources.length : (role.total_resources || 0);
+          const cCount = role.certifications ? role.certifications.length : (role.total_certifications || 0);
+          const badge = document.createElement('span');
+          badge.style.fontSize = '0.72rem';
+          badge.style.fontWeight = '700';
+          badge.style.opacity = '0.9';
+          badge.style.marginLeft = '6px';
+          badge.textContent = `(${rCount + cCount})`;
+          return badge;
+        }
+        return null;
+      },
+      renderItemMeta: (role) => {
+        if (role) {
+          const rCount = role.learning_resources ? role.learning_resources.length : (role.total_resources || 0);
+          const cCount = role.certifications ? role.certifications.length : (role.total_certifications || 0);
+          const countSpan = document.createElement('span');
+          countSpan.style.fontSize = '0.72rem';
+          countSpan.style.color = 'var(--text-muted)';
+          countSpan.textContent = `(${rCount + cCount})`;
+          return countSpan;
+        }
+        return null;
+      }
     });
-    resourceRecRoleSelectorList.appendChild(moreBtn);
   }
 
   async function fetchAndRenderResourceRecommendations(resumeId) {
@@ -2810,6 +3122,396 @@ document.addEventListener('DOMContentLoaded', () => {
     resourceRecRetryBtn.addEventListener('click', () => {
       if (currentResumeId) {
         fetchAndRenderResourceRecommendations(currentResumeId);
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // 4d-2. Personalized Learning Roadmap (Gemini Grounded)
+  // -------------------------------------------------------------------------
+
+  function resetRoadmapState() {
+    isGeneratingRoadmap = false;
+    roadmapsCache.clear();
+
+    if (roadmapLoadingCard) roadmapLoadingCard.classList.add('hidden');
+    if (roadmapErrorCard) roadmapErrorCard.classList.add('hidden');
+    if (roadmapResultsContainer) roadmapResultsContainer.classList.add('hidden');
+    if (roadmapEmptyCard) {
+      roadmapEmptyCard.classList.remove('hidden');
+      if (roadmapEmptyDesc) {
+        roadmapEmptyDesc.textContent = 'Click Generate Personalized Learning Roadmap to organize your verified learning resources and certifications into sequential learning phases. Each phase provides a logical progression from foundational skills to advanced topics, with personalized explanations tailored to your background.';
+      }
+    }
+
+    if (generateRoadmapBtn) {
+      generateRoadmapBtn.disabled = false;
+      if (generateRoadmapBtnText) {
+        generateRoadmapBtnText.textContent = 'Generate Personalized Learning Roadmap';
+      }
+    }
+    if (roadmapRetryBtn) {
+      roadmapRetryBtn.disabled = false;
+    }
+  }
+
+  function updateRoadmapViewForRole(roleId, roleTitle) {
+    if (!roleId) return;
+
+    if (roadmapsCache.has(roleId)) {
+      const cachedRoadmap = roadmapsCache.get(roleId);
+      if (roadmapLoadingCard) roadmapLoadingCard.classList.add('hidden');
+      if (roadmapErrorCard) roadmapErrorCard.classList.add('hidden');
+      if (roadmapEmptyCard) roadmapEmptyCard.classList.add('hidden');
+      renderRoadmap(cachedRoadmap);
+      if (roadmapResultsContainer) roadmapResultsContainer.classList.remove('hidden');
+
+      if (generateRoadmapBtnText && !isGeneratingRoadmap) {
+        generateRoadmapBtnText.textContent = 'Regenerate Personalized Learning Roadmap';
+      }
+    } else {
+      if (!isGeneratingRoadmap) {
+        if (roadmapLoadingCard) roadmapLoadingCard.classList.add('hidden');
+        if (roadmapErrorCard) roadmapErrorCard.classList.add('hidden');
+        if (roadmapResultsContainer) roadmapResultsContainer.classList.add('hidden');
+        if (roadmapEmptyCard) {
+          roadmapEmptyCard.classList.remove('hidden');
+          if (roadmapEmptyDesc && roleTitle) {
+            roadmapEmptyDesc.textContent = `Click Generate Personalized Learning Roadmap to organize verified learning resources and certifications for ${formatJobRoleTitle(roleTitle)} into sequential learning phases. Each phase provides a logical progression from foundational skills to advanced topics, with personalized explanations tailored to your background.`;
+          }
+        }
+        if (generateRoadmapBtnText) {
+          generateRoadmapBtnText.textContent = 'Generate Personalized Learning Roadmap';
+        }
+      }
+    }
+  }
+
+  async function generatePersonalizedRoadmap(resumeId, targetRoleId = null) {
+    if (!resumeId || isGeneratingRoadmap) return;
+
+    // Resolve target role ID
+    let effectiveRoleId = targetRoleId || selectedResourceRecRoleId;
+    if (!effectiveRoleId && currentResourceRecData && currentResourceRecData.roles && currentResourceRecData.roles.length > 0) {
+      effectiveRoleId = currentResourceRecData.roles[0].job_role_id;
+    }
+    if (!effectiveRoleId) {
+      showStatusMessage('warning', '⚠️', 'Please select a target career role to generate a learning roadmap.', { scroll: false });
+      return;
+    }
+
+    isGeneratingRoadmap = true;
+
+    // Scroll to roadmap section smoothly
+    const roadmapSection = document.getElementById('personalizedRoadmapSection');
+    if (roadmapSection) {
+      roadmapSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // Button loading state
+    if (generateRoadmapBtn) {
+      generateRoadmapBtn.disabled = true;
+      if (generateRoadmapBtnText) {
+        generateRoadmapBtnText.textContent = 'Generating Roadmap...';
+      }
+    }
+    if (roadmapRetryBtn) {
+      roadmapRetryBtn.disabled = true;
+    }
+
+    // Toggle container visibility
+    if (roadmapEmptyCard) roadmapEmptyCard.classList.add('hidden');
+    if (roadmapErrorCard) roadmapErrorCard.classList.add('hidden');
+    if (roadmapResultsContainer) roadmapResultsContainer.classList.add('hidden');
+    if (roadmapLoadingCard) {
+      if (roadmapLoadingTitle && currentResourceRecData && currentResourceRecData.roles) {
+        const rItem = currentResourceRecData.roles.find(r => r.job_role_id === effectiveRoleId);
+        if (rItem) {
+          roadmapLoadingTitle.textContent = `Generating Roadmap for ${formatJobRoleTitle(rItem.job_role_title)}...`;
+        }
+      }
+      roadmapLoadingCard.classList.remove('hidden');
+    }
+
+    try {
+      const url = `${API_BASE_URL}/api/resumes/${resumeId}/resource-recommendations/roadmap?target_role_id=${effectiveRoleId}`;
+
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        });
+      } catch (netErr) {
+        throw new Error(`Cannot connect to CareerSync API: ${netErr.message}`);
+      }
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const detailMsg = errJson.detail || `Server returned HTTP status ${res.status}`;
+        throw new Error(detailMsg);
+      }
+
+      const data = await res.json();
+      roadmapsCache.set(effectiveRoleId, data);
+
+      if (roadmapLoadingCard) roadmapLoadingCard.classList.add('hidden');
+      renderRoadmap(data);
+      if (roadmapResultsContainer) roadmapResultsContainer.classList.remove('hidden');
+
+      if (roadmapSection) {
+        roadmapSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      const totalItems = data.total_items || (data.phases ? data.phases.reduce((acc, p) => acc + (p.items ? p.items.length : 0), 0) : 0);
+      showStatusMessage(
+        'success',
+        '🗺️',
+        `<strong>Roadmap Generated:</strong> Created ${data.total_phases || 0} learning phases with ${totalItems} targeted resources.`,
+        { scroll: false }
+      );
+    } catch (err) {
+      if (roadmapLoadingCard) roadmapLoadingCard.classList.add('hidden');
+      if (roadmapResultsContainer) roadmapResultsContainer.classList.add('hidden');
+      if (roadmapErrorCard) {
+        if (roadmapErrorMessage) {
+          roadmapErrorMessage.textContent = err.message || 'Failed to generate personalized learning roadmap.';
+        }
+        roadmapErrorCard.classList.remove('hidden');
+      }
+      if (roadmapSection) {
+        roadmapSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      showStatusMessage('warning', '⚠️', `<strong>Roadmap Generation Failed:</strong> ${err.message}`, { scroll: false });
+    } finally {
+      isGeneratingRoadmap = false;
+      if (generateRoadmapBtn) {
+        generateRoadmapBtn.disabled = false;
+        if (generateRoadmapBtnText) {
+          generateRoadmapBtnText.textContent = roadmapsCache.has(effectiveRoleId)
+            ? 'Regenerate Personalized Learning Roadmap'
+            : 'Generate Personalized Learning Roadmap';
+        }
+      }
+      if (roadmapRetryBtn) {
+        roadmapRetryBtn.disabled = false;
+      }
+    }
+  }
+
+  function renderRoadmap(data) {
+    if (!roadmapPhasesList) return;
+
+    // 1. Summary banner
+    if (roadmapSummaryTitle) {
+      roadmapSummaryTitle.textContent = `Learning Strategy: ${formatJobRoleTitle(data.target_role_title || 'Target Role')}`;
+    }
+    if (roadmapSummaryText) {
+      roadmapSummaryText.textContent = data.summary || 'Follow this progressive learning sequence to bridge identified skill gaps.';
+    }
+
+    roadmapPhasesList.innerHTML = '';
+
+    const phases = Array.isArray(data.phases) ? data.phases : [];
+    if (phases.length === 0) {
+      const emptyNotice = document.createElement('div');
+      emptyNotice.className = 'empty-entity-notice';
+      emptyNotice.style.padding = '16px';
+      emptyNotice.style.textAlign = 'center';
+      emptyNotice.textContent = 'No learning phases required for this role. Your verified skills already meet the required qualifications.';
+      roadmapPhasesList.appendChild(emptyNotice);
+      return;
+    }
+
+    phases.forEach(phase => {
+      const phaseCard = document.createElement('div');
+      phaseCard.className = 'roadmap-phase-card';
+
+      // Phase Header
+      const phaseHeader = document.createElement('div');
+      phaseHeader.className = 'roadmap-phase-header';
+
+      const titleRow = document.createElement('div');
+      titleRow.className = 'roadmap-phase-title-row';
+
+      const phaseBadge = document.createElement('span');
+      phaseBadge.className = 'roadmap-phase-badge';
+      phaseBadge.textContent = `Phase ${phase.phase_number}`;
+      titleRow.appendChild(phaseBadge);
+
+      const phaseTitle = document.createElement('h6');
+      phaseTitle.className = 'roadmap-phase-title';
+      phaseTitle.textContent = phase.title;
+      titleRow.appendChild(phaseTitle);
+
+      phaseHeader.appendChild(titleRow);
+
+      const itemsCount = Array.isArray(phase.items) ? phase.items.length : 0;
+      const countBadge = document.createElement('span');
+      countBadge.className = 'roadmap-phase-count';
+      countBadge.textContent = `${itemsCount} ${itemsCount === 1 ? 'item' : 'items'}`;
+      phaseHeader.appendChild(countBadge);
+
+      phaseCard.appendChild(phaseHeader);
+
+      // Phase Description
+      if (phase.description) {
+        const descP = document.createElement('p');
+        descP.className = 'roadmap-phase-desc';
+        descP.textContent = phase.description;
+        phaseCard.appendChild(descP);
+      }
+
+      // Phase Items Container
+      const itemsContainer = document.createElement('div');
+      itemsContainer.className = 'roadmap-phase-items';
+
+      if (Array.isArray(phase.items)) {
+        phase.items.forEach(item => {
+          const itemCard = document.createElement('div');
+          itemCard.className = 'roadmap-item-card';
+
+          // Item Header
+          const itemHeader = document.createElement('div');
+          itemHeader.className = 'roadmap-item-header';
+
+          const titleGroup = document.createElement('div');
+          titleGroup.className = 'roadmap-item-title-group';
+
+          // Sequence order circle
+          const orderSpan = document.createElement('span');
+          orderSpan.className = 'roadmap-item-order';
+          orderSpan.textContent = String(item.sequence_order || 1);
+          titleGroup.appendChild(orderSpan);
+
+          // Title & link
+          const isLink = isValidHttpUrl(item.url);
+          if (isLink) {
+            const link = document.createElement('a');
+            link.href = item.url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.className = 'roadmap-item-title';
+            link.textContent = item.title || 'Learning Resource';
+
+            const extIcon = document.createElement('span');
+            extIcon.style.fontSize = '0.75rem';
+            extIcon.style.marginLeft = '4px';
+            extIcon.textContent = '↗';
+            link.appendChild(extIcon);
+
+            titleGroup.appendChild(link);
+          } else {
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'roadmap-item-title';
+            titleSpan.style.color = 'var(--text-primary)';
+            titleSpan.textContent = item.title || 'Learning Resource';
+            titleGroup.appendChild(titleSpan);
+          }
+
+          itemHeader.appendChild(titleGroup);
+
+          // Badges group (Item type + targeted skill)
+          const badgesGroup = document.createElement('div');
+          badgesGroup.className = 'roadmap-item-badges';
+
+          // Type badge
+          const isCert = item.item_type === 'CERTIFICATION';
+          const typeBadge = document.createElement('span');
+          typeBadge.className = `roadmap-badge-type ${isCert ? 'roadmap-badge-certification' : 'roadmap-badge-resource'}`;
+          typeBadge.textContent = isCert ? '🏆 Certification' : '📖 Course / Guide';
+          badgesGroup.appendChild(typeBadge);
+
+          // Skill tag badge
+          if (item.targeted_skill_name) {
+            const skillBadge = document.createElement('span');
+            skillBadge.className = 'roadmap-badge-type';
+            skillBadge.style.backgroundColor = 'var(--accent-purple-light)';
+            skillBadge.style.color = 'var(--accent-purple)';
+            skillBadge.style.borderColor = 'var(--accent-purple-border)';
+            skillBadge.textContent = `🎯 ${item.targeted_skill_name}`;
+            badgesGroup.appendChild(skillBadge);
+          }
+
+          itemHeader.appendChild(badgesGroup);
+          itemCard.appendChild(itemHeader);
+
+          // Item Meta Row (Platform/Provider, Level, Cost)
+          const metaRow = document.createElement('div');
+          metaRow.className = 'roadmap-item-meta';
+
+          if (item.platform_or_provider) {
+            const platSpan = document.createElement('span');
+            platSpan.textContent = `🏢 ${item.platform_or_provider}`;
+            metaRow.appendChild(platSpan);
+          }
+
+          if (item.difficulty_or_level) {
+            const levelSpan = document.createElement('span');
+            levelSpan.textContent = `📊 ${item.difficulty_or_level}`;
+            metaRow.appendChild(levelSpan);
+          }
+
+          const costSpan = document.createElement('span');
+          if (item.is_free !== undefined && item.is_free !== null) {
+            costSpan.textContent = item.is_free ? '🏷️ Free' : (isCert ? '🏷️ Certification Exam' : '🏷️ Paid');
+          } else if (isCert) {
+            costSpan.textContent = '🏷️ Exam';
+          }
+          if (costSpan.textContent) {
+            metaRow.appendChild(costSpan);
+          }
+
+          itemCard.appendChild(metaRow);
+
+          // Personalized Explanation Box
+          if (item.personalized_explanation) {
+            const expBox = document.createElement('div');
+            expBox.className = 'roadmap-explanation-box';
+
+            const expLabel = document.createElement('div');
+            expLabel.className = 'roadmap-explanation-label';
+            expLabel.textContent = 'Why this resource matters';
+            expBox.appendChild(expLabel);
+
+            const expText = document.createElement('p');
+            expText.className = 'roadmap-explanation-text';
+            expText.textContent = item.personalized_explanation;
+            expBox.appendChild(expText);
+
+            itemCard.appendChild(expBox);
+          }
+
+          itemsContainer.appendChild(itemCard);
+        });
+      }
+
+      phaseCard.appendChild(itemsContainer);
+      roadmapPhasesList.appendChild(phaseCard);
+    });
+  }
+
+  // Event Listeners for Roadmap Buttons
+  if (generateRoadmapBtn) {
+    generateRoadmapBtn.addEventListener('click', async () => {
+      if (isGeneratingRoadmap) return;
+      if (!currentResumeId || !currentResumeToken) {
+        showStatusMessage('warning', '⚠️', 'Please upload and analyze a resume before generating a learning roadmap.', { scroll: false });
+        const resSection = document.getElementById('learning-resources');
+        if (resSection) {
+          resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        return;
+      }
+      await generatePersonalizedRoadmap(currentResumeId, selectedResourceRecRoleId);
+    });
+  }
+
+  if (roadmapRetryBtn) {
+    roadmapRetryBtn.addEventListener('click', async () => {
+      if (isGeneratingRoadmap) return;
+      if (currentResumeId && currentResumeToken) {
+        await generatePersonalizedRoadmap(currentResumeId, selectedResourceRecRoleId);
       }
     });
   }
@@ -3442,6 +4144,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // Global listener to close Section Role More Options dropdowns on outside click or Escape
+  document.addEventListener('click', (e) => {
+    closeOtherRoleDropdowns(null, e.target);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeOtherRoleDropdowns(null);
+    }
+  });
 
   // Global listener to close Resume Improvement More Options dropdown on outside click or Escape
   document.addEventListener('click', (e) => {

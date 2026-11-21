@@ -1441,24 +1441,25 @@ body {
 
 /* Role Selector Controls & Badges (Target-Role Prioritization & More/Less) */
 .more-toggle-btn {
-  font-size: 0.8rem;
-  padding: 6px 14px;
+  font-size: 0.82rem;
+  padding: 6px 12px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px dashed var(--border-color);
-  background-color: var(--bg-card-subtle);
-  color: var(--accent-purple);
-  border-radius: var(--radius-md);
-  transition: all 0.15s ease;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  line-height: normal;
 }
 
 .more-toggle-btn:hover {
-  border-color: var(--accent-purple);
-  background-color: rgba(168, 85, 247, 0.1);
-  color: var(--accent-purple);
+  background-color: var(--bg-card-subtle);
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 
 .role-target-badge {
@@ -1537,14 +1538,16 @@ body {
 }
 
 /* --------------------------------------------------------------------------
-   Resume Improvement Scope Selector & Dropdown Menu
+   Resume Improvement & Section Role Scope Selector Dropdown Menus
    -------------------------------------------------------------------------- */
-.improvement-dropdown-container {
+.improvement-dropdown-container,
+.role-dropdown-container {
   position: relative;
   display: inline-flex;
 }
 
-.improvement-dropdown-menu {
+.improvement-dropdown-menu,
+.role-dropdown-menu {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -1563,11 +1566,13 @@ body {
   gap: 3px;
 }
 
-.improvement-dropdown-menu.hidden {
+.improvement-dropdown-menu.hidden,
+.role-dropdown-menu.hidden {
   display: none !important;
 }
 
-.improvement-dropdown-item {
+.improvement-dropdown-item,
+.role-dropdown-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1585,12 +1590,14 @@ body {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.improvement-dropdown-item:hover {
+.improvement-dropdown-item:hover,
+.role-dropdown-item:hover {
   background-color: var(--bg-card-subtle);
   color: var(--accent-purple);
 }
 
-.improvement-dropdown-item.active {
+.improvement-dropdown-item.active,
+.role-dropdown-item.active {
   background-color: var(--accent-purple-light);
   color: var(--accent-purple);
   font-weight: 700;
@@ -1602,6 +1609,207 @@ body {
   display: inline-block;
   transition: transform 0.2s ease;
 }
+
+/* --------------------------------------------------------------------------
+   Personalized Learning Roadmap (Gemini Grounded)
+   -------------------------------------------------------------------------- */
+.roadmap-phase-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  position: relative;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.roadmap-phase-card:hover {
+  border-color: var(--accent-purple-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.roadmap-phase-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.roadmap-phase-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.roadmap-phase-badge {
+  background-color: var(--accent-purple);
+  color: var(--text-light);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+}
+
+.roadmap-phase-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.roadmap-phase-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.roadmap-phase-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--border-color);
+}
+
+.roadmap-phase-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.roadmap-item-card {
+  background-color: var(--bg-card-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.roadmap-item-card:hover {
+  border-color: var(--accent-purple-border);
+  background-color: var(--bg-card);
+}
+
+.roadmap-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.roadmap-item-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.roadmap-item-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: var(--accent-purple-light);
+  color: var(--accent-purple);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid var(--accent-purple-border);
+  flex-shrink: 0;
+}
+
+.roadmap-item-title {
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: var(--accent-purple);
+  text-decoration: none;
+  line-height: 1.35;
+}
+
+.roadmap-item-title:hover {
+  text-decoration: underline;
+}
+
+.roadmap-item-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.roadmap-badge-type {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+.roadmap-badge-resource {
+  background-color: var(--accent-cyan-light);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan-border);
+}
+
+.roadmap-badge-certification {
+  background-color: var(--color-mint-bg);
+  color: var(--color-mint);
+  border-color: var(--color-mint-border);
+}
+
+.roadmap-item-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.roadmap-item-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.roadmap-explanation-box {
+  padding: 10px 12px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-purple);
+  border-radius: var(--radius-sm);
+}
+
+.roadmap-explanation-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-purple);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roadmap-explanation-text {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
 
 
 

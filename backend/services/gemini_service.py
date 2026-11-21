@@ -32,10 +32,24 @@ from backend.schemas.analysis import (
     SanitizedResumePayload,
     SuggestionPriority,
 )
+from backend.schemas.recommendation import (
+    EnrichedLearningRoadmapResponse,
+    EnrichedRoadmapItem,
+    EnrichedRoadmapPhase,
+    GeminiRoadmapItem,
+    GeminiRoadmapOutput,
+    GeminiRoadmapPhase,
+    LearningRoadmapResponse,
+    PersonalizedRoadmapResponse,
+    RoadmapItem,
+    RoadmapItemType,
+    RoadmapPhase,
+)
 from backend.services.privacy_sanitizer import (
     OversizedInputError,
     PrivacyViolationError,
     build_sanitized_payload,
+    sanitize_text,
 )
 
 logger = logging.getLogger("careersync.services.gemini_service")
@@ -347,4 +361,454 @@ def generate_resume_improvement_suggestions(
         target_role_id=target_role_id,
         client=client,
         model=model,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Learning Roadmap Generation Engine (Grounded & Privacy-Sanitized)
+# -----------------------------------------------------------------------------
+
+ROADMAP_SYSTEM_INSTRUCTION = (
+    "You are an expert technical career mentor and curriculum advisor. "
+    "Your objective is to design a personalized, sequenced learning roadmap that helps a candidate bridge specific skill gaps for their target role.\n\n"
+    "STRICT RULES:\n"
+    "1. You must ONLY reference the learning resources and certifications provided in the prompt using their exact database IDs (resource_id or certification_id).\n"
+    "2. NEVER invent, fabricate, or hallucinate new courses, certifications, providers, or URLs.\n"
+    "3. Every learning item in your roadmap must select from the approved resources and certifications listed in the prompt.\n"
+    "4. Organize the roadmap into logical, sequential phases (e.g., Phase 1: Core Foundations, Phase 2: Advanced Implementations, Phase 3: Industry Certification).\n"
+    "5. For every item, provide a clear, personalized explanation of why this specific resource helps the candidate bridge their identified skill gap.\n"
+    "6. Respond strictly with JSON matching the requested schema."
+)
+
+
+def _normalize_resource_dict(item: Any) -> Dict[str, Any]:
+    """Extract normalized resource dictionary from dict, Pydantic model, or DB instance."""
+    if isinstance(item, dict):
+        return {
+            "resource_id": item.get("resource_id") or item.get("id"),
+            "title": item.get("title") or "Learning Resource",
+            "platform_name": item.get("platform_name") or item.get("platform") or "Platform",
+            "targeted_skill_id": item.get("targeted_skill_id"),
+            "targeted_skill_name": item.get("targeted_skill_name") or item.get("skill_name") or "Technical Skill",
+            "difficulty_level": item.get("difficulty_level") or "BEGINNER",
+            "is_free": item.get("is_free", True),
+            "url": item.get("url"),
+        }
+    return {
+        "resource_id": getattr(item, "resource_id", None) or getattr(item, "id", None),
+        "title": getattr(item, "title", "Learning Resource"),
+        "platform_name": getattr(item, "platform_name", None) or getattr(item, "platform", "Platform"),
+        "targeted_skill_id": getattr(item, "targeted_skill_id", None),
+        "targeted_skill_name": getattr(item, "targeted_skill_name", None) or getattr(item, "skill_name", "Technical Skill"),
+        "difficulty_level": getattr(item, "difficulty_level", "BEGINNER"),
+        "is_free": getattr(item, "is_free", True),
+        "url": getattr(item, "url", None),
+    }
+
+
+def _normalize_certification_dict(item: Any) -> Dict[str, Any]:
+    """Extract normalized certification dictionary from dict, Pydantic model, or DB instance."""
+    if isinstance(item, dict):
+        return {
+            "certification_id": item.get("certification_id") or item.get("id"),
+            "name": item.get("name") or item.get("title") or "Certification",
+            "code": item.get("code"),
+            "provider_name": item.get("provider_name") or item.get("provider") or "Accredited Body",
+            "level": item.get("level") or "ENTRY",
+            "targeted_skill_id": item.get("targeted_skill_id"),
+            "targeted_skill_name": item.get("targeted_skill_name") or item.get("skill_name") or "Technical Skill",
+            "official_url": item.get("official_url") or item.get("url"),
+        }
+    return {
+        "certification_id": getattr(item, "certification_id", None) or getattr(item, "id", None),
+        "name": getattr(item, "name", None) or getattr(item, "title", "Certification"),
+        "code": getattr(item, "code", None),
+        "provider_name": getattr(item, "provider_name", None) or getattr(item, "provider", "Accredited Body"),
+        "level": getattr(item, "level", "ENTRY"),
+        "targeted_skill_id": getattr(item, "targeted_skill_id", None),
+        "targeted_skill_name": getattr(item, "targeted_skill_name", None) or getattr(item, "skill_name", "Technical Skill"),
+        "official_url": getattr(item, "official_url", None) or getattr(item, "url", None),
+    }
+
+
+def build_roadmap_prompt(
+    target_role_title: str,
+    verified_skills: Sequence[str],
+    missing_skills: Sequence[str],
+    resources: Sequence[Dict[str, Any]],
+    certifications: Sequence[Dict[str, Any]],
+) -> str:
+    """
+    Construct a grounded, privacy-preserving prompt for learning roadmap generation.
+    Supplies the exact catalog of database resources and certifications Gemini may reference.
+    """
+    prompt_lines: List[str] = [
+        f"Target Career Role: {target_role_title}\n",
+        f"Candidate's Verified Skills: {', '.join(verified_skills) if verified_skills else 'None verified'}",
+        f"Identified Missing Skill Gaps: {', '.join(missing_skills) if missing_skills else 'None identified'}\n",
+        "--- APPROVED DATABASE LEARNING RESOURCES ---",
+    ]
+
+    if resources:
+        for r in resources:
+            res_id = r["resource_id"]
+            title = r.get("title", "Resource")
+            platform = r.get("platform_name", "Platform")
+            skill = r.get("targeted_skill_name", "General")
+            cost = "Free" if r.get("is_free") else "Paid"
+            diff = r.get("difficulty_level", "All Levels")
+            prompt_lines.append(
+                f"  • resource_id: {res_id} | Title: \"{title}\" | Platform: {platform} | Skill: {skill} | Cost: {cost} | Level: {diff}"
+            )
+    else:
+        prompt_lines.append("  (No learning resources available)")
+
+    prompt_lines.append("\n--- APPROVED DATABASE CERTIFICATIONS ---")
+    if certifications:
+        for c in certifications:
+            cert_id = c["certification_id"]
+            name = c.get("name", "Certification")
+            provider = c.get("provider_name", "Provider")
+            skill = c.get("targeted_skill_name", "General")
+            level = c.get("level", "Standard")
+            code_str = f" [{c.get('code')}]" if c.get("code") else ""
+            prompt_lines.append(
+                f"  • certification_id: {cert_id} | Name: \"{name}\"{code_str} | Provider: {provider} | Skill: {skill} | Level: {level}"
+            )
+    else:
+        prompt_lines.append("  (No certifications available)")
+
+    prompt_lines.append(
+        "\nTask: Create a cohesive, phased learning roadmap selecting from the approved resources and certifications above. "
+        "Sequence them logically so foundational topics precede advanced topics. "
+        "For each item, specify item_type ('LEARNING_RESOURCE' or 'CERTIFICATION'), reference its exact database ID, "
+        "and provide a personalized explanation of why this resource is valuable given the candidate's background and skill gaps. "
+        "Do NOT invent, fabricate, or mention any resources outside of this approved list."
+    )
+
+    return "\n".join(prompt_lines)
+
+
+def generate_learning_roadmap(
+    resume_id: int,
+    target_role_title: str,
+    target_role_id: Optional[int] = None,
+    verified_skills: Optional[Sequence[Any]] = None,
+    missing_skills: Optional[Sequence[Any]] = None,
+    learning_resources: Optional[Sequence[Any]] = None,
+    certifications: Optional[Sequence[Any]] = None,
+    candidate_name: Optional[str] = None,
+    client: Optional[genai.Client] = None,
+    model: Optional[str] = None,
+) -> EnrichedLearningRoadmapResponse:
+    """
+    Generate a personalized, phased learning roadmap using Google Gemini.
+
+    Guarantees:
+    1. Zero PII transmission: candidate name, email, phone, raw resume text, and tokens are scrubbed.
+    2. Strict database grounding: Gemini is restricted to referencing supplied resource and certification IDs.
+    3. Rejects any output referencing unsupplied, non-existent, or hallucinated IDs.
+    4. Validates structured JSON matching PersonalizedRoadmapResponse schema.
+    5. Returns EnrichedLearningRoadmapResponse populated with verified database titles, URLs, and platforms.
+    6. Robust error handling without fake or rule-based fallback fabrication.
+    """
+    # 1. Sanitize text and skill strings
+    clean_role_title = (
+        sanitize_text(str(target_role_title).strip(), candidate_name=candidate_name)
+        if target_role_title
+        else "Software Engineering Professional"
+    ) or "Software Engineering Professional"
+
+    clean_verified_skills: List[str] = []
+    for s in (verified_skills or []):
+        s_name = getattr(s, "name", None) or getattr(s, "skill_name", None) or (s if isinstance(s, str) else None)
+        if s_name:
+            clean_s = sanitize_text(str(s_name).strip(), candidate_name=candidate_name)
+            if clean_s:
+                clean_verified_skills.append(clean_s[:100])
+
+    clean_missing_skills: List[str] = []
+    for s in (missing_skills or []):
+        s_name = getattr(s, "name", None) or getattr(s, "skill_name", None) or (s if isinstance(s, str) else None)
+        if s_name:
+            clean_s = sanitize_text(str(s_name).strip(), candidate_name=candidate_name)
+            if clean_s:
+                clean_missing_skills.append(clean_s[:100])
+
+    # 2. Normalize and index database resources and certifications
+    normalized_resources: List[Dict[str, Any]] = [
+        _normalize_resource_dict(r) for r in (learning_resources or [])
+    ]
+    normalized_certifications: List[Dict[str, Any]] = [
+        _normalize_certification_dict(c) for c in (certifications or [])
+    ]
+
+    resource_map: Dict[int, Dict[str, Any]] = {
+        r["resource_id"]: r for r in normalized_resources if r.get("resource_id") is not None
+    }
+    certification_map: Dict[int, Dict[str, Any]] = {
+        c["certification_id"]: c for c in normalized_certifications if c.get("certification_id") is not None
+    }
+
+    allowed_resource_ids = set(resource_map.keys())
+    allowed_certification_ids = set(certification_map.keys())
+
+    # Fast return if no resources or certifications exist
+    if not allowed_resource_ids and not allowed_certification_ids:
+        logger.info(
+            "No learning resources or certifications supplied for resume %s; returning empty roadmap.",
+            resume_id,
+        )
+        return EnrichedLearningRoadmapResponse(
+            resume_id=resume_id,
+            target_role_id=target_role_id,
+            target_role_title=clean_role_title,
+            total_phases=0,
+            total_items=0,
+            phases=[],
+            summary=f"No skill gaps or learning resources required for {clean_role_title}.",
+            generated_at=datetime.now(timezone.utc),
+        )
+
+    # 3. Assemble prompt and configuration
+    prompt = build_roadmap_prompt(
+        target_role_title=clean_role_title,
+        verified_skills=clean_verified_skills,
+        missing_skills=clean_missing_skills,
+        resources=list(resource_map.values()),
+        certifications=list(certification_map.values()),
+    )
+
+    target_model = model or settings.GEMINI_MODEL or "gemini-3.1-flash-lite"
+    gemini_client = client or get_gemini_client()
+
+    logger.info(
+        "Invoking Gemini model '%s' for learning roadmap (resume_id=%d, role='%s', resources=%d, certs=%d)",
+        target_model,
+        resume_id,
+        clean_role_title,
+        len(allowed_resource_ids),
+        len(allowed_certification_ids),
+    )
+
+    config = genai_types.GenerateContentConfig(
+        system_instruction=ROADMAP_SYSTEM_INSTRUCTION,
+        response_mime_type="application/json",
+        response_schema=build_gemini_response_schema(GeminiRoadmapOutput),
+        temperature=0.2,
+    )
+
+    # 4. Invoke Gemini with standardized error handling
+    try:
+        response = gemini_client.models.generate_content(
+            model=target_model,
+            contents=prompt,
+            config=config,
+        )
+    except genai_errors.APIError as api_err:
+        status_code = getattr(api_err, "code", None)
+        message = str(api_err)
+        logger.error("Gemini API error generating roadmap (code=%s): %s", status_code, message)
+        if status_code == 429 or "RESOURCE_EXHAUSTED" in message or "429" in message:
+            raise GeminiQuotaExceededError(
+                "Gemini API rate limit or quota exceeded. Please try again later."
+            ) from api_err
+        raise GeminiServiceError(f"Gemini API returned error: {message}") from api_err
+    except (ConnectionError, TimeoutError, OSError) as net_err:
+        logger.error("Network failure contacting Gemini for roadmap: %s", net_err)
+        raise GeminiNetworkError(
+            f"Network error communicating with Gemini API: {net_err}"
+        ) from net_err
+    except Exception as exc:
+        exc_str = str(exc).lower()
+        if "429" in exc_str or "quota" in exc_str or "resource_exhausted" in exc_str:
+            raise GeminiQuotaExceededError(
+                "Gemini API rate limit or quota exceeded. Please try again later."
+            ) from exc
+        if "timeout" in exc_str or "connection" in exc_str or "network" in exc_str:
+            raise GeminiNetworkError(
+                f"Network failure connecting to Gemini: {exc}"
+            ) from exc
+        logger.error("Unexpected error invoking Gemini roadmap: %s", exc)
+        raise GeminiServiceError(f"Unexpected error in Gemini service: {exc}") from exc
+
+    # 5. Parse and validate JSON structure
+    raw_text = getattr(response, "text", None)
+    if not raw_text or not raw_text.strip():
+        logger.error("Gemini returned empty text response for learning roadmap.")
+        raise GeminiResponseParsingError("Gemini returned an empty response body.")
+
+    try:
+        parsed_data = json.loads(raw_text)
+    except json.JSONDecodeError as json_err:
+        logger.error("Failed to decode JSON from Gemini roadmap output: %s", json_err)
+        raise GeminiResponseParsingError(
+            f"Invalid JSON returned by Gemini: {json_err}"
+        ) from json_err
+
+    # Normalize structure to dict with 'phases'
+    if isinstance(parsed_data, list):
+        parsed_data = {"phases": parsed_data}
+    elif not isinstance(parsed_data, dict):
+        raise GeminiResponseParsingError(
+            f"Expected JSON object or list for learning roadmap, got {type(parsed_data).__name__}"
+        )
+
+    # First validate with simplified GeminiRoadmapOutput schema
+    try:
+        gemini_output = GeminiRoadmapOutput.model_validate(parsed_data)
+    except ValidationError as val_err:
+        logger.warning("Gemini roadmap output failed schema validation: %s", val_err)
+        raise GeminiResponseParsingError(
+            f"Roadmap failed schema validation: {val_err}"
+        ) from val_err
+
+    # Construct and strictly validate backend models (RoadmapItem, RoadmapPhase, PersonalizedRoadmapResponse)
+    validated_phases: List[RoadmapPhase] = []
+    for phase_idx, phase in enumerate(gemini_output.phases, 1):
+        validated_items: List[RoadmapItem] = []
+        for item_idx, item in enumerate(phase.items, 1):
+            raw_type = (item.item_type or "").strip().upper()
+            if raw_type == "LEARNING_RESOURCE":
+                item_type = RoadmapItemType.LEARNING_RESOURCE
+            elif raw_type == "CERTIFICATION":
+                item_type = RoadmapItemType.CERTIFICATION
+            else:
+                raise GeminiResponseParsingError(
+                    f"Invalid item_type '{item.item_type}'. Must be LEARNING_RESOURCE or CERTIFICATION."
+                )
+
+            try:
+                val_item = RoadmapItem(
+                    item_type=item_type,
+                    resource_id=item.resource_id,
+                    certification_id=item.certification_id,
+                    targeted_skill_name=item.targeted_skill_name or "Technical Skill",
+                    personalized_explanation=item.personalized_explanation,
+                    sequence_order=item_idx,
+                )
+                validated_items.append(val_item)
+            except ValidationError as item_err:
+                logger.warning("Roadmap item failed validation: %s", item_err)
+                raise GeminiResponseParsingError(
+                    f"Roadmap item failed validation: {item_err}"
+                ) from item_err
+
+        try:
+            val_phase = RoadmapPhase(
+                phase_number=phase.phase_number if (phase.phase_number and phase.phase_number > 0) else phase_idx,
+                title=phase.title,
+                description=phase.description,
+                items=validated_items,
+            )
+            validated_phases.append(val_phase)
+        except ValidationError as phase_err:
+            logger.warning("Roadmap phase failed validation: %s", phase_err)
+            raise GeminiResponseParsingError(
+                f"Roadmap phase failed validation: {phase_err}"
+            ) from phase_err
+
+    try:
+        roadmap_obj = PersonalizedRoadmapResponse(
+            resume_id=resume_id,
+            target_role_id=target_role_id,
+            target_role_title=clean_role_title,
+            total_phases=len(validated_phases),
+            total_items=sum(len(p.items) for p in validated_phases),
+            phases=validated_phases,
+            summary=gemini_output.summary or f"Personalized learning roadmap tailored for {clean_role_title}.",
+            generated_at=datetime.now(timezone.utc),
+        )
+    except ValidationError as resp_err:
+        logger.warning("PersonalizedRoadmapResponse validation failed: %s", resp_err)
+        raise GeminiResponseParsingError(
+            f"Roadmap validation failed: {resp_err}"
+        ) from resp_err
+
+    # 6. Strict ID grounding verification and database enrichment
+    enriched_phases: List[EnrichedRoadmapPhase] = []
+    total_items_count = 0
+
+    for phase in roadmap_obj.phases:
+        enriched_items: List[EnrichedRoadmapItem] = []
+        for item in phase.items:
+            if item.item_type == RoadmapItemType.LEARNING_RESOURCE:
+                if item.resource_id not in allowed_resource_ids:
+                    logger.error(
+                        "Gemini referenced unapproved resource_id=%s (allowed: %s)",
+                        item.resource_id,
+                        allowed_resource_ids,
+                    )
+                    raise GeminiResponseParsingError(
+                        f"Roadmap item referenced unapproved or non-existent resource_id: {item.resource_id}. "
+                        "Only verified database resources may be used."
+                    )
+                db_res = resource_map[item.resource_id]
+                enriched_items.append(
+                    EnrichedRoadmapItem(
+                        item_type=item.item_type,
+                        resource_id=item.resource_id,
+                        certification_id=None,
+                        targeted_skill_id=item.targeted_skill_id or db_res.get("targeted_skill_id"),
+                        targeted_skill_name=item.targeted_skill_name or db_res.get("targeted_skill_name", "Skill"),
+                        personalized_explanation=item.personalized_explanation,
+                        sequence_order=item.sequence_order,
+                        title=db_res.get("title"),
+                        platform_or_provider=db_res.get("platform_name"),
+                        url=db_res.get("url"),
+                        difficulty_or_level=db_res.get("difficulty_level"),
+                        is_free=db_res.get("is_free"),
+                    )
+                )
+            elif item.item_type == RoadmapItemType.CERTIFICATION:
+                if item.certification_id not in allowed_certification_ids:
+                    logger.error(
+                        "Gemini referenced unapproved certification_id=%s (allowed: %s)",
+                        item.certification_id,
+                        allowed_certification_ids,
+                    )
+                    raise GeminiResponseParsingError(
+                        f"Roadmap item referenced unapproved or non-existent certification_id: {item.certification_id}. "
+                        "Only verified database certifications may be used."
+                    )
+                db_cert = certification_map[item.certification_id]
+                enriched_items.append(
+                    EnrichedRoadmapItem(
+                        item_type=item.item_type,
+                        resource_id=None,
+                        certification_id=item.certification_id,
+                        targeted_skill_id=item.targeted_skill_id or db_cert.get("targeted_skill_id"),
+                        targeted_skill_name=item.targeted_skill_name or db_cert.get("targeted_skill_name", "Skill"),
+                        personalized_explanation=item.personalized_explanation,
+                        sequence_order=item.sequence_order,
+                        title=db_cert.get("name"),
+                        platform_or_provider=db_cert.get("provider_name"),
+                        url=db_cert.get("official_url"),
+                        difficulty_or_level=db_cert.get("level"),
+                        is_free=False,
+                    )
+                )
+            total_items_count += 1
+
+        enriched_phases.append(
+            EnrichedRoadmapPhase(
+                phase_number=phase.phase_number,
+                title=phase.title,
+                description=phase.description,
+                items=enriched_items,
+            )
+        )
+
+    if total_items_count == 0 and (allowed_resource_ids or allowed_certification_ids):
+        raise GeminiResponseParsingError("Gemini generated 0 roadmap items from the provided resources.")
+
+    return EnrichedLearningRoadmapResponse(
+        resume_id=resume_id,
+        target_role_id=target_role_id,
+        target_role_title=clean_role_title,
+        total_phases=len(enriched_phases),
+        total_items=total_items_count,
+        phases=enriched_phases,
+        summary=roadmap_obj.summary or f"Personalized learning roadmap tailored for {clean_role_title}.",
+        generated_at=datetime.now(timezone.utc),
     )

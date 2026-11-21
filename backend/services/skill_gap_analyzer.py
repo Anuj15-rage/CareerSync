@@ -117,7 +117,7 @@ def analyze_and_persist_skill_gaps(
             critical_missing_items: List[Dict[str, Any]] = []
             for req in match_res["missing_required_skills"]:
                 reason_text = (
-                    f"Critical missing skill: '{req['skill_name']}' (weight: {req['weight']:.2f}) "
+                    f"Critical missing skill: {req['skill_name']} "
                     f"is required for {role.title}."
                 )[:255]
                 gap = SkillGap(
@@ -141,7 +141,7 @@ def analyze_and_persist_skill_gaps(
             secondary_missing_items: List[Dict[str, Any]] = []
             for pref in match_res["missing_preferred_skills"]:
                 reason_text = (
-                    f"Secondary missing skill: '{pref['skill_name']}' (weight: {pref['weight']:.2f}) "
+                    f"Secondary missing skill: {pref['skill_name']} "
                     f"is preferred for {role.title}."
                 )[:255]
                 gap = SkillGap(
