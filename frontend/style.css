@@ -1478,4 +1478,131 @@ body {
   color: #ffffff;
 }
 
+/* --------------------------------------------------------------------------
+   Resume Improvement Suggestions (Gemini Powered)
+   -------------------------------------------------------------------------- */
+.improvement-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.improvement-card:hover {
+  border-color: var(--accent-purple-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.improvement-badge-priority-high {
+  background-color: var(--color-danger-bg) !important;
+  color: var(--color-danger) !important;
+  border-color: var(--color-danger-border) !important;
+}
+
+.improvement-badge-priority-medium {
+  background-color: var(--color-warning-bg) !important;
+  color: var(--color-warning) !important;
+  border-color: var(--color-warning-border) !important;
+}
+
+.improvement-badge-priority-low {
+  background-color: var(--accent-cyan-light) !important;
+  color: var(--accent-cyan) !important;
+  border-color: var(--accent-cyan-border) !important;
+}
+
+.actionable-recommendation-box {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card-subtle);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-purple);
+}
+
+.actionable-recommendation-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--accent-purple);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.actionable-recommendation-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* --------------------------------------------------------------------------
+   Resume Improvement Scope Selector & Dropdown Menu
+   -------------------------------------------------------------------------- */
+.improvement-dropdown-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.improvement-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  min-width: 260px;
+  max-width: 340px;
+  max-height: 280px;
+  overflow-y: auto;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.improvement-dropdown-menu.hidden {
+  display: none !important;
+}
+
+.improvement-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.improvement-dropdown-item:hover {
+  background-color: var(--bg-card-subtle);
+  color: var(--accent-purple);
+}
+
+.improvement-dropdown-item.active {
+  background-color: var(--accent-purple-light);
+  color: var(--accent-purple);
+  font-weight: 700;
+}
+
+.dropdown-caret {
+  margin-left: 6px;
+  font-size: 0.72rem;
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+
+
 

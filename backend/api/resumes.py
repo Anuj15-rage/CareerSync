@@ -1,6 +1,8 @@
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.exc import SQLAlchemyError
@@ -8,12 +10,17 @@ from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.models import (
+    AnalysisSession,
+    CareerRecommendation,
+    JobRole,
     Resume,
     ResumeEducation,
     ResumeExperience,
+    ResumeImprovementSuggestion,
     ResumeProject,
     ResumeSkill,
     Skill,
+    SkillGap,
 )
 from backend.schemas.analysis import (
     CandidateInfo,
@@ -22,6 +29,16 @@ from backend.schemas.analysis import (
     ExtractedProjectItem,
     ExtractedSkillItem,
     ResumeAnalysisResponse,
+    ResumeImprovementItem,
+    ResumeImprovementResponse,
+)
+from backend.services.gemini_service import (
+    GeminiConfigurationError,
+    GeminiNetworkError,
+    GeminiQuotaExceededError,
+    GeminiResponseParsingError,
+    GeminiServiceError,
+    generate_resume_improvement_suggestions,
 )
 from backend.schemas.matching import (
     JobRoleMatchScore,
@@ -1143,6 +1160,317 @@ def get_single_role_resource_recommendations(
 
 
 
+
+
+
+@router.post(
+    "/{resume_id}/improvement-suggestions/generate",
+    response_model=ResumeImprovementResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate and persist AI-driven resume improvement suggestions via Google Gemini",
+)
+def generate_improvement_suggestions_endpoint(
+    resume_id: int,
+    target_role_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_resume: Resume = Depends(verify_resume_access),
+):
+    """
+    Generates actionable, prioritized resume improvement suggestions using Google Gemini.
+    Privacy & Security Guarantees:
+    - Requires valid X-Resume-Token matching the authenticated resume.
+    - All personal identifiable information (name, email, phone) and raw text are scrubbed before prompt submission.
+    - Suggestions are persisted transactionally in the existing resume_improvement_suggestions table.
+    """
+    if current_resume.analysis_completed_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Resume with ID {resume_id} has not been analyzed yet. Please run resume analysis first.",
+        )
+
+    # 1. Determine Target Job Role and AnalysisSession
+    target_role_title: str
+    target_role_id_clean: Optional[int] = None
+    role_desc: str
+
+    if target_role_id is not None:
+        role_obj = (
+            db.query(JobRole)
+            .filter(JobRole.id == target_role_id, JobRole.is_active == True)
+            .first()
+        )
+        if not role_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Active JobRole with ID {target_role_id} not found.",
+            )
+        target_role_title = role_obj.title
+        target_role_id_clean = role_obj.id
+        role_desc = role_obj.overview or f"Target job role evaluation for {target_role_title}"
+
+        # Find or initialize an associated AnalysisSession for this specific role
+        session = (
+            db.query(AnalysisSession)
+            .filter(
+                AnalysisSession.resume_id == resume_id,
+                AnalysisSession.job_role_id == target_role_id_clean,
+            )
+            .order_by(AnalysisSession.created_at.desc())
+            .first()
+        )
+        if not session:
+            session = AnalysisSession(
+                resume_id=resume_id,
+                job_role_id=target_role_id_clean,
+                target_role_title=target_role_title,
+                target_job_description=role_desc,
+            )
+            db.add(session)
+            db.flush()
+    else:
+        # Dedicated general analysis session with job_role_id = NULL
+        target_role_title = "General Software Engineering Profile"
+        target_role_id_clean = None
+        role_desc = "Comprehensive profile evaluation across software development domains."
+
+        session = (
+            db.query(AnalysisSession)
+            .filter(
+                AnalysisSession.resume_id == resume_id,
+                AnalysisSession.job_role_id.is_(None),
+            )
+            .order_by(AnalysisSession.created_at.desc())
+            .first()
+        )
+        if not session:
+            session = AnalysisSession(
+                resume_id=resume_id,
+                job_role_id=None,
+                target_role_title=target_role_title,
+                target_job_description=role_desc,
+            )
+            db.add(session)
+            db.flush()
+
+    # 2. Retrieve ONLY sanitized entity data (no PII, no raw_text)
+    skill_rows = (
+        db.query(Skill.name)
+        .join(ResumeSkill, ResumeSkill.skill_id == Skill.id)
+        .filter(ResumeSkill.resume_id == resume_id)
+        .all()
+    )
+    skill_names = [s[0] for s in skill_rows]
+
+    project_rows = (
+        db.query(ResumeProject)
+        .filter(ResumeProject.resume_id == resume_id)
+        .all()
+    )
+    projects_data = [
+        {
+            "title": p.title,
+            "technologies": p.technologies_used,
+            "description": p.description,
+        }
+        for p in project_rows
+    ]
+
+    experience_rows = (
+        db.query(ResumeExperience)
+        .filter(ResumeExperience.resume_id == resume_id)
+        .all()
+    )
+    experience_data = [
+        {
+            "role_title": x.role_title,
+            "duration": x.duration,
+            "description": x.description,
+        }
+        for x in experience_rows
+    ]
+
+    missing_skills: List[str] = []
+    if session and session.skill_gaps:
+        missing_skills = [
+            g.skill.name for g in session.skill_gaps
+            if g.gap_priority in ("CRITICAL_MISSING", "SECONDARY_MISSING") and g.skill
+        ]
+
+    # 3. Invoke Gemini Service safely
+    try:
+        gemini_result = generate_resume_improvement_suggestions(
+            resume_id=resume_id,
+            skills=skill_names,
+            projects=projects_data,
+            experience=experience_data,
+            target_role_title=target_role_title,
+            target_role_id=target_role_id_clean,
+            missing_skills=missing_skills,
+            session_id=session.id,
+            candidate_name=current_resume.candidate_name,
+        )
+    except GeminiConfigurationError as gce:
+        db.rollback()
+        logger.error("Gemini configuration error for resume %d: %s", resume_id, gce)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gemini API is not configured on the backend. Please verify server settings.",
+        )
+    except GeminiQuotaExceededError as gqe:
+        db.rollback()
+        logger.warning("Gemini quota exceeded for resume %d: %s", resume_id, gqe)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Gemini API rate limit or quota exceeded. Please try again later.",
+        )
+    except GeminiNetworkError as gne:
+        db.rollback()
+        logger.error("Gemini network error for resume %d: %s", resume_id, gne)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Network error communicating with the Gemini API. Please try again.",
+        )
+    except GeminiResponseParsingError as grpe:
+        db.rollback()
+        logger.error("Gemini parsing error for resume %d: %s", resume_id, grpe)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Invalid or malformed structured response received from Gemini.",
+        )
+    except GeminiServiceError as gse:
+        db.rollback()
+        logger.error("Gemini service error for resume %d: %s", resume_id, gse)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while generating suggestions: {gse}",
+        )
+
+    # 4. Save generated suggestions transactionally
+    try:
+        # Idempotent replacement: remove existing suggestions for this session
+        db.query(ResumeImprovementSuggestion).filter(
+            ResumeImprovementSuggestion.session_id == session.id
+        ).delete(synchronize_session=False)
+
+        for item in gemini_result.suggestions:
+            suggestion_payload = {
+                "title": item.title,
+                "description": item.description,
+                "actionable_recommendation": item.actionable_recommendation,
+            }
+            cat_val = item.category.value if hasattr(item.category, "value") else str(item.category)
+            prio_val = item.priority.value if hasattr(item.priority, "value") else str(item.priority)
+
+            db_suggestion = ResumeImprovementSuggestion(
+                session_id=session.id,
+                category=cat_val,
+                priority=prio_val,
+                suggestion=json.dumps(suggestion_payload),
+            )
+            db.add(db_suggestion)
+
+        db.commit()
+    except SQLAlchemyError as sae:
+        db.rollback()
+        logger.error("Database error saving improvement suggestions for resume %d: %s", resume_id, sae)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred while saving improvement suggestions.",
+        )
+
+    return gemini_result
+
+
+@router.get(
+    "/{resume_id}/improvement-suggestions",
+    response_model=ResumeImprovementResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Retrieve previously generated and persisted resume improvement suggestions",
+)
+def get_improvement_suggestions_endpoint(
+    resume_id: int,
+    session_id: Optional[int] = None,
+    target_role_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_resume: Resume = Depends(verify_resume_access),
+):
+    """
+    Read-only retrieval of persisted resume improvement suggestions.
+    Guarantees:
+    - Verified access via X-Resume-Token matching resume_id.
+    - Zero external API calls.
+    - If session_id is provided, filters strictly by that session ID.
+    - If target_role_id is provided, filters strictly by that role ID.
+    - If neither is provided, defaults to general suggestions (job_role_id IS NULL).
+    """
+    if current_resume.analysis_completed_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Resume with ID {resume_id} has not been analyzed yet. Please run resume analysis first.",
+        )
+
+    query = (
+        db.query(ResumeImprovementSuggestion, AnalysisSession)
+        .join(AnalysisSession, AnalysisSession.id == ResumeImprovementSuggestion.session_id)
+        .filter(AnalysisSession.resume_id == resume_id)
+    )
+    if session_id is not None:
+        query = query.filter(AnalysisSession.id == session_id)
+    elif target_role_id is not None:
+        query = query.filter(AnalysisSession.job_role_id == target_role_id)
+    else:
+        # Default to dedicated general suggestions where job_role_id IS NULL
+        query = query.filter(AnalysisSession.job_role_id.is_(None))
+
+    rows = query.order_by(
+        ResumeImprovementSuggestion.created_at.desc(),
+        ResumeImprovementSuggestion.id.asc(),
+    ).all()
+
+    if not rows:
+        return ResumeImprovementResponse(
+            resume_id=resume_id,
+            session_id=session_id,
+            target_role_id=target_role_id,
+            target_role_title="General Software Engineering Profile" if target_role_id is None and session_id is None else None,
+            total_suggestions=0,
+            suggestions=[],
+            message="No improvement suggestions found for this resume. Generate suggestions first.",
+        )
+
+    matched_session = rows[0][1]
+    items: List[ResumeImprovementItem] = []
+
+    for sug, sess in rows:
+        try:
+            payload = json.loads(sug.suggestion)
+            title = payload.get("title", f"{sug.category} Suggestion")
+            desc = payload.get("description", sug.suggestion)
+            rec = payload.get("actionable_recommendation", sug.suggestion)
+        except (json.JSONDecodeError, TypeError):
+            title = f"{sug.category} Suggestion"
+            desc = sug.suggestion
+            rec = sug.suggestion
+
+        items.append(
+            ResumeImprovementItem(
+                category=sug.category,
+                priority=sug.priority,
+                title=title,
+                description=desc,
+                actionable_recommendation=rec,
+            )
+        )
+
+    return ResumeImprovementResponse(
+        resume_id=resume_id,
+        session_id=matched_session.id,
+        target_role_id=matched_session.job_role_id,
+        target_role_title=matched_session.target_role_title,
+        total_suggestions=len(items),
+        suggestions=items,
+        message=f"Retrieved {len(items)} persisted improvement suggestions.",
+    )
 
 
 @router.delete(

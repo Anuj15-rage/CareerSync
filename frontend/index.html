@@ -896,19 +896,103 @@
           </div>
         </section>
 
-        <!-- 7. Resume Improvement Section (Preview) -->
+        <!-- 7. Resume Improvement Section (Gemini Powered) -->
         <section id="resume-improvement" class="dashboard-section">
-          <div class="section-header">
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
             <div>
+              <span class="section-tag" style="background-color: var(--accent-purple-light); border-color: var(--accent-purple-border); color: var(--accent-purple);">Resume Feedback</span>
               <h3 class="section-title">Resume Improvement Suggestions</h3>
-              <p class="section-desc">Actionable recommendations to improve clarity, structural coherence, and project impact.</p>
+              <p class="section-desc">Actionable, privacy-preserving recommendations powered by Google Gemini to enhance project impact, phrasing, and target role alignment.</p>
+            </div>
+            <div class="section-actions">
+              <button type="button" id="generateImprovementBtn" class="btn btn-primary" title="Generate recommendations using sanitized profile information">
+                <span class="btn-icon">✨</span>
+                <span class="btn-text" id="generateImprovementBtnText">Generate Suggestions</span>
+              </button>
             </div>
           </div>
 
-          <div class="preview-empty-card">
+          <!-- Empty State (when no resume analyzed or pending generation) -->
+          <div class="preview-empty-card" id="improvementEmptyCard">
             <div class="empty-state-icon">✍️</div>
-            <h4 class="empty-state-title">Improvement Feedback Pending Analysis</h4>
-            <p class="empty-state-desc">Receive guidance on phrasing project impact, highlighting technical proficiencies, and organizing sections to better communicate your qualifications to reviewers. CareerSync does not fabricate achievements or qualifications.</p>
+            <h4 class="empty-state-title" id="improvementEmptyTitle">Improvement Feedback Pending Analysis</h4>
+            <p class="empty-state-desc" id="improvementEmptyDesc">Receive guidance on phrasing project impact, highlighting technical proficiencies, and organizing sections to better communicate your qualifications to reviewers. CareerSync does not fabricate achievements or qualifications.</p>
+          </div>
+
+          <!-- Loading State Card -->
+          <div id="improvementLoadingCard" class="card hidden">
+            <div class="card-body" style="padding: 36px 24px; text-align: center; align-items: center;">
+              <span class="spinner" style="font-size: 2.2rem; margin-bottom: 12px; display: inline-block;">⏳</span>
+              <h4 class="card-title" id="improvementLoadingTitle" style="margin-bottom: 6px;">Generating Resume Improvement Suggestions...</h4>
+              <p class="stat-hint" id="improvementLoadingDesc">Sanitizing resume data and requesting structured feedback from Google Gemini. This may take a few seconds.</p>
+            </div>
+          </div>
+
+          <!-- Error State Box -->
+          <div id="improvementErrorCard" class="alert-box alert-error hidden">
+            <span class="alert-icon">⚠️</span>
+            <div style="flex: 1;">
+              <span id="improvementErrorMessage" class="alert-text">Failed to generate resume improvement suggestions.</span>
+              <div style="margin-top: 8px;">
+                <button type="button" id="improvementRetryBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.78rem;">Retry Suggestion Generation</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Results Container Card -->
+          <div id="improvementResultsCard" class="card hidden">
+            <div class="card-header">
+              <div class="card-header-with-icon">
+                <span class="card-icon">✍️</span>
+                <h4 class="card-title" id="improvementHeaderTitle">Resume Improvement Suggestions</h4>
+              </div>
+              <span class="card-badge" id="improvementHeaderBadge">General Profile</span>
+            </div>
+            <div class="card-body">
+              <!-- Scope / Role Selector Tabs -->
+              <div class="profile-section" id="improvementRoleSection">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                  <h5 class="profile-section-title" style="margin-bottom: 0;">Target Analysis Scope</h5>
+                  <span id="improvementScopeHint" class="stat-hint">Select General or a specific career role for tailored feedback</span>
+                </div>
+                <div class="skills-chips-wrapper" id="improvementRoleSelectorList">
+                  <!-- Populated dynamically with scope tabs (General + Role buttons) -->
+                </div>
+              </div>
+
+              <!-- Scope Info & Summary Bar -->
+              <div class="profile-meta-grid" id="improvementMetaGrid" style="margin-bottom: 18px;">
+                <div class="meta-item">
+                  <span class="meta-label">Current Scope</span>
+                  <span class="meta-value" id="improvementCurrentScopeTitle" style="color: var(--accent-purple);">General Profile</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Total Suggestions</span>
+                  <span class="meta-value" id="improvementTotalCountBadge">0</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">High Priority Action Items</span>
+                  <span class="meta-value" id="improvementHighPriorityCount" style="color: var(--color-danger);">0</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Privacy Shield</span>
+                  <span class="meta-value" style="color: var(--color-mint); font-size: 0.82rem;">PII Scrubbed</span>
+                </div>
+              </div>
+
+              <!-- Suggestions List Container -->
+              <div id="improvementList" style="display: flex; flex-direction: column; gap: 14px;">
+                <!-- Populated dynamically with suggestion cards -->
+              </div>
+
+              <!-- Empty state for a specific scope if no suggestions yet -->
+              <div id="improvementScopeEmptyNotice" class="preview-empty-card hidden" style="margin-top: 8px; padding: 24px;">
+                <div class="empty-state-icon">💡</div>
+                <h4 class="empty-state-title" id="improvementScopeEmptyTitle">No Suggestions Generated Yet for This Scope</h4>
+                <p class="empty-state-desc" id="improvementScopeEmptyDesc">Click "Generate Suggestions" above to create tailored recommendations for this role.</p>
+              </div>
+
+            </div>
           </div>
         </section>
       </div>

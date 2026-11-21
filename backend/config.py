@@ -45,6 +45,10 @@ class Settings:
     RESUME_EXPIRATION_HOURS: int = int(os.getenv("RESUME_EXPIRATION_HOURS", "24"))
     CLEANUP_INTERVAL_MINUTES: int = int(os.getenv("CLEANUP_INTERVAL_MINUTES", "60"))
 
+    # Google Gemini API configuration
+    GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY", None)
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+
     @property
     def cors_origins_list(self) -> list:
         """Parse comma-separated CORS_ORIGINS string into a list."""
