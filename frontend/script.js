@@ -4385,7 +4385,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (dashboardView) dashboardView.classList.remove('hidden');
 
       if (topBarTitle && topBarSubtitle) {
-        topBarTitle.textContent = 'Resume-Based Career and Resource Recommendation System';
+        topBarTitle.textContent = 'Resume to Job Matching and Career Gap Analysis System';
         topBarSubtitle.textContent = 'Analyze resumes against target roles to identify skill gaps, career paths, and tailored learning resources.';
       }
 
